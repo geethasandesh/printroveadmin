@@ -19,5 +19,8 @@ RUN npm run build
 # 7. Expose the port Next.js runs on
 EXPOSE 3000
 
-# 8. Start the app
+# 8. Set default environment variable if not provided
+ENV NEXT_PUBLIC_API_URL=https://printrove-api.vizdale.com/api
+
+# 9. Start the app
 CMD ["npm", "run", "start"]

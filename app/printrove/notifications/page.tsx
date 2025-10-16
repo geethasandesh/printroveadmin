@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, Text, Button, Badge } from '@shopify/polaris';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import { getApiBaseUrl } from '../../../lib/apiUrl';
 
 interface Notification {
   _id: string;
@@ -40,9 +41,10 @@ export default function NotificationsPage() {
   const fetchNotifications = async () => {
     setIsLoading(true);
     try {
+      const baseUrl = getApiBaseUrl();
       const url = filter === 'unread'
-        ? 'http://localhost:5001/api/notifications?recipient=admin&unreadOnly=true'
-        : 'http://localhost:5001/api/notifications?recipient=admin';
+        ? `${baseUrl}/api/notifications?recipient=admin&unreadOnly=true`
+        : `${baseUrl}/api/notifications?recipient=admin`;
 
       const response = await fetch(url, {
         method: 'GET',
@@ -65,8 +67,9 @@ export default function NotificationsPage() {
 
   const markAsRead = async (notificationId: string) => {
     try {
+      const baseUrl = getApiBaseUrl();
       const response = await fetch(
-        `http://localhost:5001/api/notifications/${notificationId}/read`,
+        `${baseUrl}/api/notifications/${notificationId}/read`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -84,8 +87,9 @@ export default function NotificationsPage() {
 
   const markAllAsRead = async () => {
     try {
+      const baseUrl = getApiBaseUrl();
       const response = await fetch(
-        'http://localhost:5001/api/notifications/mark-all-read',
+        `${baseUrl}/api/notifications/mark-all-read`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -103,8 +107,9 @@ export default function NotificationsPage() {
 
   const deleteNotification = async (notificationId: string) => {
     try {
+      const baseUrl = getApiBaseUrl();
       const response = await fetch(
-        `http://localhost:5001/api/notifications/${notificationId}`,
+        `${baseUrl}/api/notifications/${notificationId}`,
         {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' }

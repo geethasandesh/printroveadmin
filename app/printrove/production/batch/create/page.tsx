@@ -6,6 +6,7 @@ import { MultiSelect } from "@/components/MultiSelect";
 import { Button } from "@/app/components/Button";
 import { useRouter } from "next/navigation";
 import { useBatchStore } from "@/store/useBatchStore";
+import { getApiBaseUrl } from "../../../../../lib/apiUrl";
 
 type BatchType = "RUSH" | "OUTSOURCED" | "IN-HOUSE NON TSHIRT";
 
@@ -38,7 +39,8 @@ export default function CreateBatch() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const response = await fetch("http://localhost:5001/api/order/all");
+        const baseUrl = getApiBaseUrl();
+        const response = await fetch(`${baseUrl}/api/order/all`);
         const data = await response.json();
         if (data.success) {
           setOrders(

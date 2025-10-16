@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, Text, Select, TextField, Button, Badge } from "@shopify/polaris";
 import { format } from "date-fns";
+import { getApiBaseUrl } from "../../../lib/apiUrl";
 
 interface LocationHistoryViewProps {
   productId: string;
@@ -62,7 +63,7 @@ export default function LocationHistoryView({
       if (filters.endDate) params.append("endDate", filters.endDate);
 
       const response = await fetch(
-        `http://localhost:5001/api/inventory/bin-transfers/location-history/${productId}?${params}`
+        `${getApiBaseUrl()}/api/inventory/bin-transfers/location-history/${productId}?${params}`
       );
       const data = await response.json();
 

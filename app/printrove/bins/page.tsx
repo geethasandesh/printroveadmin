@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import CreateBinModal from "./createBin";
 import BinTransferModal from "./BinTransferModal";
 import LocationHistoryView from "./LocationHistoryView";
+import { getApiBaseUrl } from "../../../lib/apiUrl";
 
 interface BinWithUtilization {
   _id: string;
@@ -67,7 +68,8 @@ export default function BinsPage() {
 
   const fetchBinsWithUtilization = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/inventory/bins/utilization/all');
+      const baseUrl = getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/api/inventory/bins/utilization/all`);
       const data = await response.json();
       if (data.success) {
         setBinsWithUtilization(data.data);
@@ -79,7 +81,8 @@ export default function BinsPage() {
 
   const fetchProductsWithStock = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/inventory/bins/products-with-stock');
+      const baseUrl = getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/api/inventory/bins/products-with-stock`);
       const data = await response.json();
       if (data.success) {
         setProductsWithStock(data.data);

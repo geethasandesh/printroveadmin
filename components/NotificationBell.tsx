@@ -5,6 +5,7 @@ import { Menu, Transition } from '@headlessui/react';
 import { BellIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import { getApiBaseUrl } from '../lib/apiUrl';
 
 interface Notification {
   _id: string;
@@ -39,8 +40,7 @@ export default function NotificationBell() {
 
   const fetchNotifications = async () => {
     try {
-      // Use environment variable or fallback to localhost:5001
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const API_URL = getApiBaseUrl();
       
       const response = await fetch(
         `${API_URL}/api/notifications?recipient=admin&limit=10`,
@@ -70,7 +70,7 @@ export default function NotificationBell() {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const API_URL = getApiBaseUrl();
       
       const response = await fetch(
         `${API_URL}/api/notifications/${notificationId}/read`,
@@ -96,7 +96,7 @@ export default function NotificationBell() {
   const markAllAsRead = async () => {
     setIsLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const API_URL = getApiBaseUrl();
       
       const response = await fetch(
         `${API_URL}/api/notifications/mark-all-read`,

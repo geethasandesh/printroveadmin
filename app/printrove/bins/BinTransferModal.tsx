@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/app/components/Button";
+import { getApiBaseUrl } from "../../../lib/apiUrl";
 
 interface BinTransferModalProps {
   open: boolean;
@@ -111,7 +112,8 @@ export default function BinTransferModal({
       console.log("Fetching products with stock...");
       
       // Use direct fetch to avoid CORS issues
-      const response = await fetch('http://localhost:5001/api/inventory/bins/products-with-stock');
+      const baseUrl = getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/api/inventory/bins/products-with-stock`);
       console.log("Response status:", response.status);
       
       const data = await response.json();
@@ -142,7 +144,8 @@ export default function BinTransferModal({
 
   const fetchBins = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/inventory/bins/all');
+      const baseUrl = getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/api/inventory/bins/all`);
       const data = await response.json();
       console.log("Bins response:", data);
       
@@ -157,7 +160,7 @@ export default function BinTransferModal({
   const fetchBinsForProduct = async (productId: string) => {
     try {
       const response = await fetch(
-        `http://localhost:5001/api/inventory/bins/product/${productId}`
+        `${getApiBaseUrl()}/api/inventory/bins/product/${productId}`
       );
       const data = await response.json();
       console.log("Bins for product response:", data);
@@ -180,7 +183,7 @@ export default function BinTransferModal({
   const checkDestinationCapacity = async () => {
     try {
       const response = await fetch(
-        `http://localhost:5001/api/inventory/bins/${formData.toBinId}/validate-capacity`,
+        `${getApiBaseUrl()}/api/inventory/bins/${formData.toBinId}/validate-capacity`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -249,7 +252,8 @@ export default function BinTransferModal({
     try {
       console.log("Executing transfer with data:", formData);
       
-      const response = await fetch('http://localhost:5001/api/inventory/bin-transfers', {
+      const baseUrl = getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/api/inventory/bin-transfers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

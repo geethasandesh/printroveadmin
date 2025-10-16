@@ -16,6 +16,7 @@ import { usePrintConfig } from "@/store/usePrintConfigStore";
 import { Toaster, toast } from "react-hot-toast";
 import ImpactAnalysisModal from "../../ImpactAnalysisModal";
 import DeactivationModal from "../../DeactivationModal";
+import { getApiBaseUrl } from "../../../../lib/apiUrl";
 
 // options are now plain string values (e.g. ["Left Sleeve","Right Sleeve"])
 
@@ -119,7 +120,7 @@ export default function PrintConfigUpdatePage() {
       }
 
       const response = await fetch(
-        `http://localhost:5001/api/inventory/print-configs/${params.id}/analyze-position-change`,
+        `${getApiBaseUrl()}/api/inventory/print-configs/${params.id}/analyze-position-change`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -195,7 +196,7 @@ export default function PrintConfigUpdatePage() {
 
     try {
       const response = await fetch(
-        `http://localhost:5001/api/inventory/print-configs/${params.id}/update-confirmed`,
+        `${getApiBaseUrl()}/api/inventory/print-configs/${params.id}/update-confirmed`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -266,7 +267,7 @@ export default function PrintConfigUpdatePage() {
     setIsAnalyzing(true);
     try {
       const response = await fetch(
-        `http://localhost:5001/api/inventory/print-configs/${params.id}/analyze-deactivation`,
+        `${getApiBaseUrl()}/api/inventory/print-configs/${params.id}/analyze-deactivation`,
         {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' }
@@ -294,7 +295,7 @@ export default function PrintConfigUpdatePage() {
     setIsDeactivating(true);
     try {
       const response = await fetch(
-        `http://localhost:5001/api/inventory/print-configs/${params.id}/deactivate`,
+        `${getApiBaseUrl()}/api/inventory/print-configs/${params.id}/deactivate`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

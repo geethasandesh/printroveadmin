@@ -1,10 +1,12 @@
 import axios from "axios";
+import { getApiUrl } from "./lib/apiUrl";
+
 // Create Axios instances
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api",
+  baseURL: getApiUrl(),
 });
-// Create Axios instances
+
 export const apiFormClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL|| "http://localhost:5001/api",
+  baseURL: getApiUrl(),
 });
 export default apiClient;
