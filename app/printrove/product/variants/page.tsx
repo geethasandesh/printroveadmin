@@ -413,23 +413,6 @@ export function VariantConfig({
     // Save current variant data before final save
     saveCurrentVariantData();
 
-    // Validate that all combinations have been configured
-    const allCombinations = Array.from(variantGroups.keys());
-    const configuredCombinations = Object.keys(variantData);
-
-    const missingCombinations = allCombinations.filter(
-      (combo) => !configuredCombinations.includes(combo)
-    );
-
-    if (missingCombinations.length > 0) {
-      alert(
-        `Please configure the following variant combinations: ${missingCombinations.join(
-          ", "
-        )}`
-      );
-      return;
-    }
-
     // Create updated variant data that includes current pricing
     const updatedVariantData = {
       ...variantData,
@@ -441,47 +424,9 @@ export function VariantConfig({
       })
     };
 
-    // Validate pricing data for configured combinations
-    const invalidPricingCombos: string[] = [];
-    console.log('Validating variant data:', updatedVariantData);
-    Object.entries(updatedVariantData).forEach(([combo, data]) => {
-      console.log(`Checking combo: ${combo}`, data.pricing);
-      if (!data.pricing?.price || parseFloat(data.pricing.price) <= 0) {
-        console.log(`Invalid pricing for ${combo}:`, data.pricing);
-        invalidPricingCombos.push(combo);
-      }
-    });
+    // Pricing is optional at creation; we'll allow empty/zero pricing and proceed
 
-    if (invalidPricingCombos.length > 0) {
-      alert(
-        `Please set a valid price for the following combinations:\n${invalidPricingCombos.join('\n')}`
-      );
-      return;
-    }
-
-    // Validate print location pricing (optional - only warn if completely missing)
-    const missingPrintLocationPricing: string[] = [];
-    Object.entries(variantData).forEach(([combo, data]) => {
-      data.printConfigurations?.forEach((printConfig) => {
-        printConfig.locations?.forEach((location) => {
-          // Only require basePrice if location is being used (has bounding box)
-          if (location.boundingBox?.width && location.boundingBox?.height) {
-            if (!location.basePrice || parseFloat(location.basePrice) < 0) {
-              missingPrintLocationPricing.push(`${combo} - ${printConfig.name} - ${location.location}`);
-            }
-          }
-        });
-      });
-    });
-
-    if (missingPrintLocationPricing.length > 0) {
-      const confirm = window.confirm(
-        `Some print locations have bounding boxes but missing base prices:\n${missingPrintLocationPricing.slice(0, 3).join('\n')}${missingPrintLocationPricing.length > 3 ? '\n...and ' + (missingPrintLocationPricing.length - 3) + ' more' : ''}\n\nDo you want to continue anyway?`
-      );
-      if (!confirm) {
-        return;
-      }
-    }
+    // Print location pricing is optional; continue even if missing
 
     // Ensure all combinations are generated before save
     const allCombinationsList: string[] = Array.from(variantGroups.values()).flat();
@@ -599,7 +544,7 @@ export function VariantConfig({
                 <Text variant="headingMd" as="h2">
                   Variant Combinations
                 </Text>
-                <Text variant="bodyMd" as="p" color="subdued">
+                <Text variant="bodyMd" as="p" tone="subdued">
                   Select a variant combination to configure its settings.
                 </Text>
               </div>
@@ -635,7 +580,7 @@ export function VariantConfig({
                     <Text variant="headingMd" as="h3">
                       Print Configurations
                     </Text>
-                    <Text variant="bodyMd" as="p" color="subdued">
+                    <Text variant="bodyMd" as="p" tone="subdued">
                       Configure print areas and pricing for each print method and location.
                     </Text>
                   </div>
@@ -728,7 +673,7 @@ export function VariantConfig({
                                   <Text
                                     variant="bodySm"
                                     as="p"
-                                    color="subdued"
+                                    tone="subdued"
                                   >
                                     Define the printable area on the garment in inches. Coordinates are relative to the top-left corner of the garment.
                                   </Text>
@@ -736,7 +681,7 @@ export function VariantConfig({
                                 
                                 {/* Helper Information */}
                                 <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                  <Text variant="bodySm" as="p" fontWeight="medium" color="primary">
+                                  <Text variant="bodySm" as="p" fontWeight="medium">
                                     💡 Standard Print Areas:
                                   </Text>
                                   <div className="mt-2 space-y-1 text-sm text-gray-600">
@@ -1023,9 +968,11 @@ export function VariantConfig({
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <div className="p-6">
-                    <Text variant="headingMd" as="h3" className="mb-4">
+                    <div className="mb-4">
+                      <Text variant="headingMd" as="h3">
                       Inventory
-                    </Text>
+                      </Text>
+                    </div>
                     <div className="space-y-4">
                       <TextField
                         label="SKU"
@@ -1069,9 +1016,11 @@ export function VariantConfig({
 
                 <Card>
                   <div className="p-6">
-                    <Text variant="headingMd" as="h3" className="mb-4">
+                    <div className="mb-4">
+                      <Text variant="headingMd" as="h3">
                       Shipping
-                    </Text>
+                      </Text>
+                    </div>
                     <div className="space-y-4">
                       <TextField
                         label="Product Weight"
