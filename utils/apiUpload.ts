@@ -29,7 +29,8 @@ export const uploadToS3ViaAPI = async (
 
     console.log(`Uploading file via API: ${file.name} (${file.size} bytes)`);
 
-    const response = await apiClient.post("/upload", formData, {
+    // Use /upload/admin endpoint (no authentication required for admin panel)
+    const response = await apiClient.post("/upload/admin", formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
@@ -93,7 +94,8 @@ export const uploadMultipleToS3ViaAPI = async (
 
     console.log(`Uploading ${files.length} files via API`);
 
-    const response = await apiClient.post("/upload/multiple", formData, {
+    // Use /upload/admin/multiple endpoint (no authentication required for admin panel)
+    const response = await apiClient.post("/upload/admin/multiple", formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
