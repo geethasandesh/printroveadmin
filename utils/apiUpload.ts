@@ -46,6 +46,12 @@ export const uploadToS3ViaAPI = async (
     
     if (error.response) {
       // Server responded with error
+      if (error.response.status === 404) {
+        throw new Error(
+          "Upload endpoint not available. The backend may still be deploying. " +
+          "Please wait a few minutes and try again, or contact support if the issue persists."
+        );
+      }
       throw new Error(
         error.response.data?.message || 
         `Upload failed with status ${error.response.status}`
