@@ -5,7 +5,7 @@ import { Menu, Transition } from '@headlessui/react';
 import { BellIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { getApiBaseUrl } from '../lib/apiUrl';
+import { getApiBaseUrl } from "@/lib/apiUrl";
 
 interface Notification {
   _id: string;

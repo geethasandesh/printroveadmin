@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/app/components/Button";
-import { getApiBaseUrl } from "../../../lib/apiUrl";
+import { getApiBaseUrl } from "@/lib/apiUrl";
 
 interface BinTransferModalProps {
   open: boolean;

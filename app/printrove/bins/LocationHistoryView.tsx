@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, Text, Select, TextField, Button, Badge } from "@shopify/polaris";
 import { format } from "date-fns";
-import { getApiBaseUrl } from "../../../lib/apiUrl";
+import { getApiBaseUrl } from "@/lib/apiUrl";
 
 interface LocationHistoryViewProps {
   productId: string;

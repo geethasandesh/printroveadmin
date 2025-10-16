@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, Text, Button, Badge } from '@shopify/polaris';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { getApiBaseUrl } from '../../../lib/apiUrl';
+import { getApiBaseUrl } from "@/lib/apiUrl";
 
 interface Notification {
   _id: string;

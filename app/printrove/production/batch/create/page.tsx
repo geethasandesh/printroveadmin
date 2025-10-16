@@ -6,7 +6,7 @@ import { MultiSelect } from "@/components/MultiSelect";
 import { Button } from "@/app/components/Button";
 import { useRouter } from "next/navigation";
 import { useBatchStore } from "@/store/useBatchStore";
-import { getApiBaseUrl } from "../../../../../lib/apiUrl";
+import { getApiBaseUrl } from "@/lib/apiUrl";
 
 type BatchType = "RUSH" | "OUTSOURCED" | "IN-HOUSE NON TSHIRT";
 

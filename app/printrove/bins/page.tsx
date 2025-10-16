@@ -16,7 +16,7 @@ import { format } from "date-fns";
 import CreateBinModal from "./createBin";
 import BinTransferModal from "./BinTransferModal";
 import LocationHistoryView from "./LocationHistoryView";
-import { getApiBaseUrl } from "../../../lib/apiUrl";
+import { getApiBaseUrl } from "@/lib/apiUrl";
 
 interface BinWithUtilization {
   _id: string;
