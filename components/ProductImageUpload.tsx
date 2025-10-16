@@ -4,15 +4,19 @@ import { uploadToS3, UploadedImage } from "@/utils/s3Upload";
 import { ImagePreviewModal } from "./ImagePreviewModal";
 
 interface Props {
-  type: "thumbnail" | "mockup";
+  type: "thumbnail" | "mockup" | "model-front" | "model-back" | "model-left-sleeve" | "model-right-sleeve" | "model-neck-label";
   onUploadComplete: (images: UploadedImage[]) => void;
   uploadedImages?: UploadedImage[];
+  accept?: string;
+  maxFiles?: number;
 }
 
 export function ProductImageUpload({
   type,
   onUploadComplete,
   uploadedImages = [],
+  accept = "image/jpeg,image/png",
+  maxFiles = 5,
 }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,13 +28,18 @@ export function ProductImageUpload({
 
     try {
       const validFiles = files.filter((file) => {
-        const isValidType = ["image/jpeg", "image/png"].includes(file.type);
+        const isValidType = ["image/jpeg", "image/png", "image/svg+xml"].includes(file.type);
         const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB limit
         return isValidType && isValidSize;
       });
 
       if (validFiles.length === 0) {
-        setError("Please upload valid image files (JPG/PNG) under 5MB");
+        setError("Please upload valid image files (JPG/PNG/SVG) under 5MB");
+        return;
+      }
+
+      if (validFiles.length > maxFiles) {
+        setError(`Maximum ${maxFiles} file(s) allowed`);
         return;
       }
 
@@ -72,7 +81,7 @@ export function ProductImageUpload({
 
       {/* Upload Zone First */}
       <DropZone
-        accept="image/*"
+        accept={accept}
         type="image"
         onDrop={handleDrop}
         disabled={isLoading}
@@ -86,7 +95,7 @@ export function ProductImageUpload({
               <p className="text-sm text-gray-600">Drop files to upload or</p>
               <Button>Browse</Button>
               <p className="text-xs text-gray-500 mt-2">
-                Accepts .jpg, .png (max 5MB)
+                Accepts .jpg, .png, .svg (max 5MB)
               </p>
             </>
           )}
@@ -96,20 +105,36 @@ export function ProductImageUpload({
       {/* Image Preview Section Below */}
       {uploadedImages.length > 0 && (
         <div className="grid grid-cols-4 gap-4 mb-4">
-          {uploadedImages.map((image, index) => (
-            <div key={image.key} className="relative">
-              <img
-                src={image.signedUrl || image.url} // Use signed URL for preview if available
-                alt={`${type} ${index + 1}`}
-                className="w-full h-32 object-cover rounded"
-              />
-              <div className="absolute top-2 right-2 bg-white rounded-full p-1">
-                <Button variant="plain" onClick={() => handleDelete(index)}>
-                  ×
-                </Button>
+          {uploadedImages.map((image, index) => {
+            const hasKey = !!image?.key;
+            return (
+              <div key={`${image.key}-${index}`} className="relative">
+                <img
+                  src={image.signedUrl || image.url}
+                  alt={`${type} ${index + 1}`}
+                  className="w-full h-32 object-cover rounded"
+                />
+
+                {/* Ready/Pending indicator */}
+                <div
+                  className={`absolute bottom-2 left-2 px-2 py-0.5 rounded text-[11px] font-medium ${
+                    hasKey
+                      ? "bg-green-100 text-green-800 border border-green-200"
+                      : "bg-yellow-100 text-yellow-800 border border-yellow-200"
+                  }`}
+                  title={hasKey ? `S3 Key: ${image.key}` : "Not uploaded to S3 yet"}
+                >
+                  {hasKey ? "Ready" : "Pending"}
+                </div>
+
+                <div className="absolute top-2 right-2 bg-white rounded-full p-1">
+                  <Button variant="plain" onClick={() => handleDelete(index)}>
+                    ×
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

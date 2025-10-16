@@ -111,36 +111,30 @@ interface VariantConfigProps {
   mockupFiles: UploadedImage[];
   thumbnailFiles: UploadedImage[];
   onBackAction: () => void;
-  onSaveAction: (productData: any, variantData: any) => Promise<void>;
-  existingVariantData?: Record<string, CompleteVariantData>;
-  onDataChangeAction?: (
-    variantData: Record<string, CompleteVariantData>
-  ) => void; // Add this prop
+  onSaveAction: (data: any) => void;
+  existingVariantData?: any;
+  onDataChangeAction?: (data: any) => void;
 }
 
-const generateCombinations = (variants: VariantConfig[]) => {
-  if (!variants.length) return new Map();
+const generateCombinations = (variants: VariantConfig[]): Map<string, string[]> => {
+  if (variants.length === 0) return new Map();
 
-  const [firstVariant, ...otherVariants] = variants;
-  const groups = new Map();
-
-  // Helper to recursively build combinations
-  const buildCombinations = (
-    prefix: string,
-    remainingVariants: VariantConfig[]
-  ): string[] => {
-    if (!remainingVariants.length) return [prefix];
-    const [current, ...rest] = remainingVariants;
-    return current.values.flatMap((value) =>
-      buildCombinations(`${prefix} - ${value}`, rest)
-    );
+  const groups = new Map<string, string[]>();
+  
+  // Generate all possible combinations
+  const generate = (index: number, current: string[]) => {
+    if (index === variants.length) {
+      const combination = current.join(' - ');
+      groups.set(combination, [...current]);
+      return;
+    }
+    
+    variants[index].values.forEach(value => {
+      generate(index + 1, [...current, value]);
+    });
   };
-
-  firstVariant.values.forEach((firstValue) => {
-    const combinations = buildCombinations(firstValue, otherVariants);
-    groups.set(firstValue, combinations);
-  });
-
+  
+  generate(0, []);
   return groups;
 };
 
@@ -153,7 +147,7 @@ export function VariantConfig({
   existingVariantData,
   onDataChangeAction,
 }: VariantConfigProps) {
-  // Move all state declarations to the top, before any conditional logic
+  
   // Compute variant groups
   const variantGroups = productData?.variants
     ? generateCombinations(productData.variants)
@@ -161,7 +155,7 @@ export function VariantConfig({
   // Initialize selected combination to first available
   const initialCombination =
     variantGroups.size > 0
-      ? variantGroups.values().next().value[0] || null
+      ? (variantGroups.values().next().value?.[0] || null)
       : null;
   const [selectedCombination, setSelectedCombination] = useState<string | null>(
     initialCombination
@@ -202,137 +196,138 @@ export function VariantConfig({
     return combination.split(" - ").map((value) => value.trim());
   }, []);
 
-  const calculateProfit = useCallback((price: string, cost: string) => {
-    const p = parseFloat(price || "0");
-    const c = parseFloat(cost || "0");
-    return p && c ? (p - c).toFixed(2) : "";
-  }, []);
 
-  const calculateMargin = useCallback((price: string, cost: string) => {
-    const p = parseFloat(price || "0");
-    const c = parseFloat(cost || "0");
-    return p && c ? (((p - c) / p) * 100).toFixed(2) : "";
-  }, []);
-
-  const handleThumbnailUpload = useCallback(
-    async (files: File[]) => {
-      if (!selectedCombination) return;
-
-      try {
-        const uploadPromises = files.map((file) =>
-          uploadToS3(file, "thumbnail")
-        );
-        const results = await Promise.allSettled(uploadPromises);
-
-        const successfulUploads = results
-          .filter(
-            (result): result is PromiseFulfilledResult<UploadedImage> =>
-              result.status === "fulfilled"
-          )
-          .map((result) => result.value);
-
-        setUploadedImages((prev) => ({
-          ...prev,
-          [selectedCombination]: {
-            thumbnails: [
-              ...(prev[selectedCombination]?.thumbnails || []),
-              ...successfulUploads,
-            ],
-          },
-        }));
-      } catch (error) {
-        console.error("Failed to upload thumbnails:", error);
+  // Helper function to get default bounding box values based on garment type and location
+  const getDefaultBoundingBox = useCallback((garmentType: string, location: string) => {
+    const defaults = {
+      't-shirt': {
+        'Front': { width: '13', height: '17', top: '3', left: '2' },
+        'Back': { width: '13', height: '17', top: '3', left: '2' },
+        'Sleeve': { width: '6', height: '8', top: '2', left: '1' }
+      },
+      'polo': {
+        'Front': { width: '11', height: '15', top: '3', left: '2' },
+        'Back': { width: '11', height: '15', top: '3', left: '2' },
+        'Sleeve': { width: '5', height: '7', top: '2', left: '1' }
+      },
+      'sweatshirt': {
+        'Front': { width: '12', height: '16', top: '3', left: '2' },
+        'Back': { width: '12', height: '16', top: '3', left: '2' },
+        'Sleeve': { width: '6', height: '8', top: '2', left: '1' }
+      },
+      'hoodie': {
+        'Front': { width: '12', height: '16', top: '3', left: '2' },
+        'Back': { width: '12', height: '16', top: '3', left: '2' },
+        'Sleeve': { width: '6', height: '8', top: '2', left: '1' }
       }
-    },
-    [selectedCombination]
-  );
+    };
 
-  // Save current variant data
+    // Determine garment type from product title - with safe fallback
+    const title = (productData && typeof productData.title === 'string') ? productData.title.toLowerCase() : '';
+    let type = 't-shirt';
+    if (title.includes('polo')) type = 'polo';
+    else if (title.includes('sweat') || title.includes('hoodie')) type = 'sweatshirt';
+
+    return (defaults as any)[type]?.[location] || defaults['t-shirt']['Front'];
+  }, [productData]);
+
+  // Helper function to validate bounding box dimensions
+  const validateBoundingBox = useCallback((boundingBox: any, location: string) => {
+    const width = parseFloat(boundingBox.width || '0');
+    const height = parseFloat(boundingBox.height || '0');
+    const top = parseFloat(boundingBox.top || '0');
+    const left = parseFloat(boundingBox.left || '0');
+
+    const errors = [];
+
+    // Basic validation
+    if (width <= 0) errors.push('Width must be greater than 0');
+    if (height <= 0) errors.push('Height must be greater than 0');
+    if (top < 0) errors.push('Top position cannot be negative');
+    if (left < 0) errors.push('Left position cannot be negative');
+
+    // Reasonable size limits
+    if (width > 20) errors.push('Width seems too large (>20 inches)');
+    if (height > 25) errors.push('Height seems too large (>25 inches)');
+
+    // Minimum margins from edges
+    if (top < 1) errors.push('Top position should be at least 1" from collar');
+    if (left < 1) errors.push('Left position should be at least 1" from edge');
+
+    return errors;
+  }, []);
+
+  // Save current variant data to the main state
   const saveCurrentVariantData = useCallback(() => {
-    if (!selectedCombination || !productData?.variants) return;
+    if (!selectedCombination) return;
 
-    const newVariantData = {
+    // Group print locations by print config name
+    const groupedPrintConfigs: Record<string, any[]> = {};
+    Object.entries(printLocations).forEach(([key, location]) => {
+      const [printConfigName, locationName] = key.split('-');
+      if (!groupedPrintConfigs[printConfigName]) {
+        groupedPrintConfigs[printConfigName] = [];
+      }
+      groupedPrintConfigs[printConfigName].push({
+        location: locationName,
+        basePrice: location.basePrice || "",
+        fontRate: location.fontRate || "",
+        boundingBox: location.boundingBox,
+        gridlines: location.gridlines || [],
+      });
+    });
+
+    const currentData: CompleteVariantData = {
       combination: selectedCombination,
       values: getVariantValues(selectedCombination).map((value, index) => ({
-        name: productData.variants[index].name,
+        name: productData.variants[index]?.name || `Variant ${index + 1}`,
         value,
       })),
       thumbnails: uploadedImages[selectedCombination]?.thumbnails || [],
       pricing: pricingData,
-      printConfigurations: (productData.printConfigs || []).map(
-        (printConfig) => {
-          const key = printConfig._id || printConfig.name;
-          const selectedOptions = productData.printOptions?.[key];
-          const locationsToUse =
-            selectedOptions && selectedOptions.length > 0
-              ? selectedOptions
-              : printConfig.options || [];
-
-          return {
-            name: printConfig.name,
-            locations: locationsToUse.map((location) => {
-              const locationKey = `${printConfig.name}-${location}`;
-              const locationData = printLocations[locationKey];
-              return {
-                location: location,
-                basePrice: locationData?.basePrice || "",
-                fontRate: locationData?.fontRate || "",
-                boundingBox: locationData?.boundingBox || {
-                  width: "",
-                  height: "",
-                  top: "",
-                  left: "",
-                },
-                gridlines: locationData?.gridlines || [],
-              };
-            }),
-          };
-        }
-      ),
-      inventory: inventoryData,
-      shipping: shippingData,
+      printConfigurations: Object.entries(groupedPrintConfigs).map(([printConfigName, locations]) => ({
+        name: printConfigName,
+        locations: locations,
+      })),
+      inventory: {
+        sku: inventoryData.sku || "",
+        zohoItemId: inventoryData.zohoItemId || "",
+        location: inventoryData.location || { name: "Default", unavailable: 0, committed: 0, available: 0, onHand: 0 },
+      },
+      shipping: {
+        productWeight: shippingData.productWeight || "",
+        shippingWeight: shippingData.shippingWeight || "",
+      },
     };
 
-    setVariantData((prev) => ({
+    console.log('Saving variant data for:', selectedCombination, currentData);
+    setVariantData(prev => ({
       ...prev,
-      [selectedCombination]: newVariantData,
+      [selectedCombination]: currentData,
     }));
+
+    // Notify parent component of data changes
+    if (onDataChangeAction) {
+      const updatedData = {
+        ...variantData,
+        [selectedCombination]: currentData,
+      };
+      onDataChangeAction(updatedData);
+    }
   }, [
     selectedCombination,
-    productData,
     getVariantValues,
+    productData.variants,
     uploadedImages,
     pricingData,
     printLocations,
     inventoryData,
     shippingData,
+    variantData,
+    onDataChangeAction,
   ]);
 
-  // Debounced save function
-  const debouncedSaveVariantData = useCallback(
-    debounce(() => {
-      saveCurrentVariantData();
-    }, 1000),
-    [saveCurrentVariantData]
-  );
-
-  // Initialize from existing data
-  useEffect(() => {
-    if (existingVariantData && Object.keys(existingVariantData).length > 0) {
-      setVariantData(existingVariantData);
-
-      // If there's no selection, or the current selection is not in the existing data,
-      // default to the first item.
-      setSelectedCombination((currentSelection) => {
-        if (!currentSelection || !existingVariantData[currentSelection]) {
-          return Object.keys(existingVariantData)[0];
-        }
-        return currentSelection;
-      });
-    }
-  }, [existingVariantData]);
-
-  // Load data for selected combination, or reset if combination changes
+  // Load existing variant data when combination changes
   useEffect(() => {
     if (selectedCombination && variantData[selectedCombination]) {
       const currentVariantData = variantData[selectedCombination];
@@ -378,7 +373,6 @@ export function VariantConfig({
     } else {
       // Reset to default state if no data for selected combination
       setPricingData({ price: "", compareAtPrice: "", costPerItem: "" });
-      setPrintLocations({});
       setInventoryData({
         sku: "",
         zohoItemId: "",
@@ -391,291 +385,392 @@ export function VariantConfig({
         },
       });
       setShippingData({ productWeight: "", shippingWeight: "" });
-      if (selectedCombination) {
-        setUploadedImages((prev) => ({
-          ...prev,
-          [selectedCombination]: { thumbnails: [] },
-        }));
-      }
+      setPrintLocations({});
     }
   }, [selectedCombination, variantData]);
 
-  // Auto-save when data changes
+  // Auto-save current variant data when it changes
   useEffect(() => {
     if (selectedCombination) {
-      debouncedSaveVariantData();
+      console.log('Auto-save triggered for:', selectedCombination, pricingData);
+      const timeoutId = setTimeout(() => {
+        saveCurrentVariantData();
+      }, 1000); // Debounce auto-save
+
+      return () => clearTimeout(timeoutId);
     }
-    return () => {
-      debouncedSaveVariantData.cancel();
-    };
   }, [
     pricingData,
-    printLocations,
     inventoryData,
     shippingData,
+    printLocations,
     uploadedImages,
-    debouncedSaveVariantData,
     selectedCombination,
+    saveCurrentVariantData,
   ]);
-
-  // Notify parent of data changes
-  useEffect(() => {
-    if (Object.keys(variantData).length > 0 && onDataChangeAction) {
-      onDataChangeAction(variantData);
-    }
-  }, [variantData, onDataChangeAction]);
 
   const handleSave = useCallback(async () => {
     // Save current variant data before final save
     saveCurrentVariantData();
 
-    // Call parent save function
-    await onSaveAction(productData, variantData);
-  }, [saveCurrentVariantData, onSaveAction, productData, variantData]);
+    // Validate that all combinations have been configured
+    const allCombinations = Array.from(variantGroups.keys());
+    const configuredCombinations = Object.keys(variantData);
 
-  // Early return ONLY after all hooks have been called
-  if (
-    !productData ||
-    !productData.variants ||
-    productData.variants.length === 0
-  ) {
-    return (
-      <div className="min-h-screen bg-[#F5F5F5] flex items-center justify-center">
-        <Text variant="headingMd" as="h2">
-          No variants configured for this product.
-        </Text>
-      </div>
+    const missingCombinations = allCombinations.filter(
+      (combo) => !configuredCombinations.includes(combo)
     );
-  }
+
+    if (missingCombinations.length > 0) {
+      alert(
+        `Please configure the following variant combinations: ${missingCombinations.join(
+          ", "
+        )}`
+      );
+      return;
+    }
+
+    // Create updated variant data that includes current pricing
+    const updatedVariantData = {
+      ...variantData,
+      ...(selectedCombination && {
+        [selectedCombination]: {
+          ...variantData[selectedCombination],
+          pricing: pricingData
+        }
+      })
+    };
+
+    // Validate pricing data for configured combinations
+    const invalidPricingCombos: string[] = [];
+    console.log('Validating variant data:', updatedVariantData);
+    Object.entries(updatedVariantData).forEach(([combo, data]) => {
+      console.log(`Checking combo: ${combo}`, data.pricing);
+      if (!data.pricing?.price || parseFloat(data.pricing.price) <= 0) {
+        console.log(`Invalid pricing for ${combo}:`, data.pricing);
+        invalidPricingCombos.push(combo);
+      }
+    });
+
+    if (invalidPricingCombos.length > 0) {
+      alert(
+        `Please set a valid price for the following combinations:\n${invalidPricingCombos.join('\n')}`
+      );
+      return;
+    }
+
+    // Validate print location pricing (optional - only warn if completely missing)
+    const missingPrintLocationPricing: string[] = [];
+    Object.entries(variantData).forEach(([combo, data]) => {
+      data.printConfigurations?.forEach((printConfig) => {
+        printConfig.locations?.forEach((location) => {
+          // Only require basePrice if location is being used (has bounding box)
+          if (location.boundingBox?.width && location.boundingBox?.height) {
+            if (!location.basePrice || parseFloat(location.basePrice) < 0) {
+              missingPrintLocationPricing.push(`${combo} - ${printConfig.name} - ${location.location}`);
+            }
+          }
+        });
+      });
+    });
+
+    if (missingPrintLocationPricing.length > 0) {
+      const confirm = window.confirm(
+        `Some print locations have bounding boxes but missing base prices:\n${missingPrintLocationPricing.slice(0, 3).join('\n')}${missingPrintLocationPricing.length > 3 ? '\n...and ' + (missingPrintLocationPricing.length - 3) + ' more' : ''}\n\nDo you want to continue anyway?`
+      );
+      if (!confirm) {
+        return;
+      }
+    }
+
+    // Ensure all combinations are generated before save
+    const allCombinationsList: string[] = Array.from(variantGroups.values()).flat();
+
+    // Helper to build default variant data for combinations not yet visited
+    const buildDefaultVariantData = (combination: string): CompleteVariantData => {
+      const valuesArr = getVariantValues(combination);
+      const autoSku = generateSKU(valuesArr);
+
+      // Determine print locations to use based on selection or config defaults
+      const printConfigs = (productData.printConfigs || []).map((printConfig) => {
+        const key = printConfig._id || printConfig.name;
+        const selectedOptions = productData.printOptions?.[key];
+        const locationsToUse = selectedOptions && selectedOptions.length > 0
+          ? selectedOptions
+          : (printConfig.options || []);
+
+        return {
+          name: printConfig.name,
+          locations: locationsToUse.map((location) => ({
+            location,
+            basePrice: printLocations[`${printConfig.name}-${location}`]?.basePrice || "",
+            fontRate: printLocations[`${printConfig.name}-${location}`]?.fontRate || "",
+            boundingBox: {
+              width: printLocations[`${printConfig.name}-${location}`]?.boundingBox?.width || "",
+              height: printLocations[`${printConfig.name}-${location}`]?.boundingBox?.height || "",
+              top: printLocations[`${printConfig.name}-${location}`]?.boundingBox?.top || "",
+              left: printLocations[`${printConfig.name}-${location}`]?.boundingBox?.left || "",
+            },
+            gridlines: printLocations[`${printConfig.name}-${location}`]?.gridlines || [],
+          })),
+        };
+      });
+
+      return {
+        combination,
+        values: valuesArr.map((value, index) => ({
+          name: productData.variants[index].name,
+          value,
+        })),
+        thumbnails: [],
+        pricing: { price: "", compareAtPrice: "", costPerItem: "" },
+        printConfigurations: printConfigs,
+        inventory: {
+          sku: autoSku || "",
+          zohoItemId: "",
+          location: { name: "Default", unavailable: 0, committed: 0, available: 0, onHand: 0 },
+        },
+        shipping: { productWeight: "", shippingWeight: "" },
+      };
+    };
+
+    const completedVariantData = { ...variantData } as Record<string, CompleteVariantData>;
+
+    // Fill in missing combinations with defaults
+    allCombinationsList.forEach((combination) => {
+      if (!completedVariantData[combination]) {
+        completedVariantData[combination] = buildDefaultVariantData(combination);
+      }
+    });
+
+    // Log the data structure for verification
+    console.log('📦 Saving product with variant configurations:');
+    console.log('Product Data:', {
+      title: productData.title,
+      variants: productData.variants,
+      printTypes: productData.printTypes,
+    });
+    console.log('Variant Configurations Sample:', Object.keys(completedVariantData).slice(0, 2).map(key => ({
+      combination: key,
+      pricing: completedVariantData[key].pricing,
+      printConfigs: completedVariantData[key].printConfigurations?.map(pc => ({
+        name: pc.name,
+        locations: pc.locations?.map(loc => ({
+          location: loc.location,
+          basePrice: loc.basePrice,
+          fontRate: loc.fontRate,
+          hasBoundingBox: !!loc.boundingBox?.width,
+        }))
+      }))
+    })));
+
+    // Call onSaveAction with combined data
+    onSaveAction({
+      productData,
+      variantConfigurations: completedVariantData
+    });
+  }, [variantData, variantGroups, productData, printLocations, getVariantValues, onSaveAction]);
+
+  const generateSKU = (values: string[]) => {
+    const title = (productData && typeof productData.title === 'string') ? productData.title : 'PRD';
+    const prefix = title.substring(0, 3).toUpperCase();
+    const suffix = values.map(v => v.substring(0, 2).toUpperCase()).join('-');
+    return `${prefix}-${suffix}`;
+  };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F5]">
-      <div className="flex">
-        {/* Left margin - 15% width */}
-        <div className="w-[15%]"></div>
+    <div className="flex h-screen">
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              Configure Variants
+            </h1>
+            <p className="text-gray-600">
+              Set up pricing, inventory, and print configurations for each variant combination.
+            </p>
+          </div>
 
-        {/* Left Sidebar */}
-        <VariantSidebar
-          productData={productData}
-          mockupFiles={mockupFiles}
-          variantGroups={variantGroups}
-          selectedCombination={selectedCombination}
-          onCombinationSelect={setSelectedCombination}
-        />
+          {/* Variant Combination Selector */}
+          <Card>
+            <div className="p-6">
+              <div className="mb-4">
+                <Text variant="headingMd" as="h2">
+                  Variant Combinations
+                </Text>
+                <Text variant="bodyMd" as="p" color="subdued">
+                  Select a variant combination to configure its settings.
+                </Text>
+              </div>
 
-        {/* Right Layout - 60% width */}
-        <div className="w-[60%] p-6 mt-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Array.from(variantGroups.keys()).map((combination) => (
+                  <button
+                    key={combination}
+                    onClick={() => setSelectedCombination(combination)}
+                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                      selectedCombination === combination
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-medium text-gray-900">{combination}</div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      {variantData[combination] ? 'Configured' : 'Not configured'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          {/* Configuration Form */}
           {selectedCombination && (
-            <>
-              {/* Existing Variant Details Card */}
+            <div className="mt-6 space-y-6">
+              {/* Print Configurations */}
               <Card>
                 <div className="p-6">
-                  <div className="mb-6">
-                    <Text variant="headingLg" as="h2">
-                      Variant Details
+                  <div className="mb-4">
+                    <Text variant="headingMd" as="h3">
+                      Print Configurations
+                    </Text>
+                    <Text variant="bodyMd" as="p" color="subdued">
+                      Configure print areas and pricing for each print method and location.
                     </Text>
                   </div>
 
-                  <div className="space-y-4">
-                    {/* Variant Values */}
-                    {productData.variants.map((variant, index) => (
-                      <div key={variant.name}>
-                        <TextField
-                          label={variant.name}
-                          value={getVariantValues(selectedCombination)[index]}
-                          readOnly
-                          autoComplete="off"
-                        />
-                      </div>
-                    ))}
+                  {Object.entries(productData.printOptions || {}).map(
+                    ([printConfigKey, selectedOptions]) => {
+                      // Find the print config by key (could be _id or name)
+                      const printConfig = productData.printConfigs.find(
+                        (pc) => pc._id === printConfigKey || pc.name === printConfigKey
+                      );
 
-                    {/* Thumbnail Upload */}
-                    <div className="mt-6">
-                      <div className="mb-2">
-                        <Text variant="bodyMd" as="p" fontWeight="medium">
-                          Thumbnail Image
-                        </Text>
-                      </div>
+                      if (!printConfig) return null;
 
-                      {/* Show uploaded thumbnails */}
-                      {uploadedImages[selectedCombination!]?.thumbnails
-                        ?.length > 0 && (
-                        <div className="grid grid-cols-4 gap-4 mb-4">
-                          {uploadedImages[selectedCombination!]?.thumbnails.map(
-                            (image, index) => (
-                              <div key={image.key} className="relative">
-                                <img
-                                  src={image.signedUrl || image.url} // Use signed URL for preview if available
-                                  alt={`Thumbnail ${index + 1}`}
-                                  className="w-full h-32 object-cover rounded"
-                                />
-                                <div className="absolute top-2 right-2 bg-white rounded-full p-1">
-                                  <Button
-                                    variant="plain"
-                                    onClick={() => {
-                                      setUploadedImages((prev) => ({
-                                        ...prev,
-                                        [selectedCombination!]: {
-                                          thumbnails:
-                                            prev[
-                                              selectedCombination!
-                                            ]?.thumbnails.filter(
-                                              (_, i) => i !== index
-                                            ) || [],
-                                        },
-                                      }));
-                                    }}
-                                  >
-                                    ×
-                                  </Button>
-                                </div>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      )}
-
-                      <DropZone
-                        accept="image/*"
-                        type="image"
-                        onDrop={(files) => handleThumbnailUpload(files)}
-                      >
-                        <div className="flex flex-col items-center justify-center p-6">
-                          <Text variant="bodyMd" as="p">
-                            Drop files to upload or
-                          </Text>
-                          <Button>Browse</Button>
-                          <Text variant="bodySm" as="p" tone="subdued">
-                            Accept JPG, PNG
-                          </Text>
-                        </div>
-                      </DropZone>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              <PricingCard
-                pricingData={pricingData}
-                onPriceChange={(field, value) => {
-                  setPricingData((prev) => ({
-                    ...prev,
-                    [field]: value,
-                  }));
-                }}
-              />
-
-              {/* Print Configuration Cards */}
-              {Object.entries(productData.printOptions || {}).map(
-                ([printConfigKey, selectedOptions]) => {
-                  // Find the print config by key (could be _id or name)
-                  const printConfig = productData.printConfigs.find(
-                    (pc) =>
-                      pc._id === printConfigKey || pc.name === printConfigKey
-                  );
-
-                  if (
-                    !printConfig ||
-                    !selectedOptions ||
-                    selectedOptions.length === 0
-                  ) {
-                    return null;
-                  }
-
-                  return (
-                    <div className="mt-2" key={printConfigKey}>
-                      <Card>
-                        <div className="p-6">
-                          <div className="mb-6">
-                            <Text variant="headingLg" as="h2">
-                              Print Configuration - {printConfig.name}
+                      return (
+                        <div key={printConfigKey} className="mb-6 p-4 border border-gray-200 rounded-lg">
+                          <div className="mb-4">
+                            <Text variant="headingSm" as="h4">
+                              {printConfig.name}
                             </Text>
                           </div>
 
                           {selectedOptions.map((location) => (
-                            <div key={location} className="mb-6 p-4 rounded-lg">
-                              <div className="mb-4">
-                                <Text variant="headingSm" as="h4">
+                            <div key={location} className="mb-4 p-4 rounded-lg">
+                              <div className="mb-3">
+                                <Text variant="bodyMd" as="p" fontWeight="medium">
                                   {location}
                                 </Text>
                               </div>
 
-                              {/* Price Section */}
-                              <div className="mb-6">
-                                <div className="mb-2">
-                                  <Text
-                                    variant="bodyMd"
-                                    as="p"
-                                    fontWeight="medium"
-                                  >
-                                    Price
-                                  </Text>
-                                </div>
-                                <div className="flex gap-4">
-                                  <div className="w-1/2">
-                                    <TextField
-                                      label="Base Price"
-                                      type="number"
-                                      prefix="₹"
-                                      value={
-                                        printLocations[
+                              {/* Base Price and Font Rate - In Indian Rupees (₹) */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <TextField
+                                  label="Base Price (₹)"
+                                  type="number"
+                                  prefix="₹"
+                                  value={
+                                    printLocations[
+                                      `${printConfig.name}-${location}`
+                                    ]?.basePrice || ""
+                                  }
+                                  onChange={(value) =>
+                                    setPrintLocations((prev) => ({
+                                      ...prev,
+                                      [`${printConfig.name}-${location}`]: {
+                                        ...prev[
                                           `${printConfig.name}-${location}`
-                                        ]?.basePrice || ""
-                                      }
-                                      onChange={(value) =>
-                                        setPrintLocations((prev) => ({
-                                          ...prev,
-                                          [`${printConfig.name}-${location}`]: {
-                                            ...prev[
-                                              `${printConfig.name}-${location}`
-                                            ],
-                                            basePrice: value,
-                                          },
-                                        }))
-                                      }
-                                      autoComplete="off"
-                                    />
-                                  </div>
-                                  <div className="w-1/2">
-                                    <TextField
-                                      label="Font Rate per Square Inch"
-                                      type="number"
-                                      prefix="₹"
-                                      value={
-                                        printLocations[
+                                        ],
+                                        basePrice: value,
+                                      },
+                                    }))
+                                  }
+                                  autoComplete="off"
+                                  helpText="Price in Indian Rupees"
+                                />
+                                <TextField
+                                  label="Setup/Font Rate (₹)"
+                                  type="number"
+                                  prefix="₹"
+                                  value={
+                                    printLocations[
+                                      `${printConfig.name}-${location}`
+                                    ]?.fontRate || ""
+                                  }
+                                  onChange={(value) =>
+                                    setPrintLocations((prev) => ({
+                                      ...prev,
+                                      [`${printConfig.name}-${location}`]: {
+                                        ...prev[
                                           `${printConfig.name}-${location}`
-                                        ]?.fontRate || ""
-                                      }
-                                      onChange={(value) =>
-                                        setPrintLocations((prev) => ({
-                                          ...prev,
-                                          [`${printConfig.name}-${location}`]: {
-                                            ...prev[
-                                              `${printConfig.name}-${location}`
-                                            ],
-                                            fontRate: value,
-                                          },
-                                        }))
-                                      }
-                                      autoComplete="off"
-                                    />
-                                  </div>
-                                </div>
+                                        ],
+                                        fontRate: value,
+                                      },
+                                    }))
+                                  }
+                                  autoComplete="off"
+                                  helpText="Additional charges in Rupees"
+                                />
                               </div>
 
                               {/* Bounding Box Section */}
-                              <div className="mb-6">
+                              <div className="mb-4">
                                 <div className="mb-2">
                                   <Text
                                     variant="bodyMd"
                                     as="p"
                                     fontWeight="medium"
                                   >
-                                    Bounding Box
+                                    Print Area Bounding Box
+                                  </Text>
+                                  <Text
+                                    variant="bodySm"
+                                    as="p"
+                                    color="subdued"
+                                  >
+                                    Define the printable area on the garment in inches. Coordinates are relative to the top-left corner of the garment.
                                   </Text>
                                 </div>
-                                <div className="flex flex-wrap gap-4">
-                                  <div className="w-[calc(50%-8px)]">
+                                
+                                {/* Helper Information */}
+                                <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                  <Text variant="bodySm" as="p" fontWeight="medium" color="primary">
+                                    💡 Standard Print Areas:
+                                  </Text>
+                                  <div className="mt-2 space-y-1 text-sm text-gray-600">
+                                    <div><strong>T-shirt Front:</strong> 12-14" wide × 16-19" tall, positioned 2-3" from collar</div>
+                                    <div><strong>T-shirt Back:</strong> 12-14" wide × 16-19" tall, positioned 2-3" from collar</div>
+                                    <div><strong>Polo Front:</strong> 10-12" wide × 14-16" tall, positioned 2-3" from collar</div>
+                                    <div><strong>Sweatshirt Front:</strong> 11-13" wide × 15-18" tall, positioned 2-3" from collar</div>
+                                  </div>
+                                </div>
+
+                                {/* Quick Fill Buttons */}
+                                <div className="mb-3 flex gap-2">
+                                  <Button
+                                    size="slim"
+                                    onClick={() => {
+                                      const defaults = getDefaultBoundingBox('', location);
+                                      setPrintLocations((prev) => ({
+                                        ...prev,
+                                        [`${printConfig.name}-${location}`]: {
+                                          ...prev[`${printConfig.name}-${location}`],
+                                          boundingBox: {
+                                            ...prev[`${printConfig.name}-${location}`]?.boundingBox,
+                                            ...defaults,
+                                          },
+                                        },
+                                      }));
+                                    }}
+                                  >
+                                    Use Defaults
+                                  </Button>
+                                </div>
+                                
+                                <div className="flex flex-wrap gap-3">
+                                  <div className="w-[calc(50%-6px)]">
                                     <TextField
                                       label="Width"
                                       type="number"
@@ -704,7 +799,7 @@ export function VariantConfig({
                                       autoComplete="off"
                                     />
                                   </div>
-                                  <div className="w-[calc(50%-8px)]">
+                                  <div className="w-[calc(50%-6px)]">
                                     <TextField
                                       label="Height"
                                       type="number"
@@ -733,7 +828,7 @@ export function VariantConfig({
                                       autoComplete="off"
                                     />
                                   </div>
-                                  <div className="w-[calc(50%-8px)]">
+                                  <div className="w-[calc(50%-6px)]">
                                     <TextField
                                       label="Top"
                                       type="number"
@@ -762,7 +857,7 @@ export function VariantConfig({
                                       autoComplete="off"
                                     />
                                   </div>
-                                  <div className="w-[calc(50%-8px)]">
+                                  <div className="w-[calc(50%-6px)]">
                                     <TextField
                                       label="Left"
                                       type="number"
@@ -792,10 +887,29 @@ export function VariantConfig({
                                     />
                                   </div>
                                 </div>
+
+                                {/* Validation Messages */}
+                                {(() => {
+                                  const boundingBox = printLocations[`${printConfig.name}-${location}`]?.boundingBox;
+                                  if (!boundingBox) return null;
+                                  
+                                  const errors = validateBoundingBox(boundingBox, location);
+                                  if (errors.length === 0) return null;
+                                  
+                                  return (
+                                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
+                                      {errors.map((error, index) => (
+                                        <div key={index} className="text-sm text-red-700">
+                                          ⚠️ {error}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
                               </div>
 
                               {/* Gridline Upload Section */}
-                              <div className="mb-6">
+                              <div className="mb-4">
                                 <div className="mb-2">
                                   <Text
                                     variant="bodyMd"
@@ -812,343 +926,208 @@ export function VariantConfig({
                                 ]?.gridlines &&
                                   (printLocations[
                                     `${printConfig.name}-${location}`
-                                  ]?.gridlines?.length ?? 0) > 0 && (
-                                    <div className="grid grid-cols-4 gap-4 mb-4">
+                                  ]?.gridlines?.length || 0) > 0 && (
+                                  <div className="mb-3">
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                       {printLocations[
                                         `${printConfig.name}-${location}`
-                                      ]?.gridlines?.map((image, index) => (
-                                        <div
-                                          key={image.key}
-                                          className="relative"
-                                        >
+                                      ]?.gridlines?.map((gridline, index) => (
+                                        <div key={index} className="relative">
                                           <img
-                                            src={image.url}
+                                            src={gridline.url}
                                             alt={`Gridline ${index + 1}`}
-                                            className="w-full h-32 object-cover rounded"
+                                            className="w-full h-24 object-cover rounded border"
                                           />
-                                          <div className="absolute top-2 right-2 bg-white rounded-full p-1">
-                                            <Button
-                                              variant="plain"
-                                              onClick={() => {
-                                                setPrintLocations((prev) => ({
-                                                  ...prev,
-                                                  [`${printConfig.name}-${location}`]:
-                                                    {
-                                                      ...prev[
-                                                        `${printConfig.name}-${location}`
-                                                      ],
-                                                      gridlines:
-                                                        prev[
-                                                          `${printConfig.name}-${location}`
-                                                        ]?.gridlines?.filter(
-                                                          (_, i) => i !== index
-                                                        ) || [],
-                                                    },
-                                                }));
-                                              }}
-                                            >
-                                              ×
-                                            </Button>
-                                          </div>
+                                          <button
+                                            onClick={() => {
+                                              setPrintLocations((prev) => ({
+                                                ...prev,
+                                                [`${printConfig.name}-${location}`]: {
+                                                  ...prev[
+                                                    `${printConfig.name}-${location}`
+                                                  ],
+                                                  gridlines: prev[
+                                                    `${printConfig.name}-${location}`
+                                                  ]?.gridlines?.filter(
+                                                    (_, i) => i !== index
+                                                  ),
+                                                },
+                                              }));
+                                            }}
+                                            className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                                          >
+                                            ×
+                                          </button>
                                         </div>
                                       ))}
                                     </div>
-                                  )}
+                                  </div>
+                                )}
 
                                 <DropZone
                                   accept="image/*"
-                                  type="image"
                                   onDrop={async (files) => {
-                                    try {
-                                      const uploadPromises = files.map((file) =>
-                                        uploadToS3(file, "gridline")
-                                      );
-                                      const results = await Promise.allSettled(
-                                        uploadPromises
-                                      );
-
-                                      const successfulUploads = results
-                                        .filter(
-                                          (
-                                            result
-                                          ): result is PromiseFulfilledResult<UploadedImage> =>
-                                            result.status === "fulfilled"
-                                        )
-                                        .map((result) => result.value);
-
-                                      setPrintLocations((prev) => ({
-                                        ...prev,
-                                        [`${printConfig.name}-${location}`]: {
-                                          ...prev[
-                                            `${printConfig.name}-${location}`
-                                          ],
-                                          location: location,
-                                          basePrice:
-                                            prev[
+                                    const file = files[0];
+                                    if (file) {
+                                      try {
+                                        const uploadedImage = await uploadToS3(file, "gridline");
+                                        setPrintLocations((prev) => ({
+                                          ...prev,
+                                          [`${printConfig.name}-${location}`]: {
+                                            ...prev[
                                               `${printConfig.name}-${location}`
-                                            ]?.basePrice || "",
-                                          fontRate:
-                                            prev[
-                                              `${printConfig.name}-${location}`
-                                            ]?.fontRate || "",
-                                          boundingBox: prev[
-                                            `${printConfig.name}-${location}`
-                                          ]?.boundingBox || {
-                                            width: "",
-                                            height: "",
-                                            top: "",
-                                            left: "",
+                                            ],
+                                            gridlines: [
+                                              ...(prev[
+                                                `${printConfig.name}-${location}`
+                                              ]?.gridlines || []),
+                                              {
+                                                key: uploadedImage.key,
+                                                url: uploadedImage.signedUrl || uploadedImage.url,
+                                              },
+                                            ],
                                           },
-                                          gridlines: [
-                                            ...(prev[
-                                              `${printConfig.name}-${location}`
-                                            ]?.gridlines || []),
-                                            ...successfulUploads,
-                                          ],
-                                        },
-                                      }));
-                                    } catch (error) {
-                                      console.error(
-                                        "Failed to upload gridlines:",
-                                        error
-                                      );
+                                        }));
+                                      } catch (error) {
+                                        console.error("Error uploading gridline:", error);
+                                        alert("Failed to upload gridline image. Please try again.");
+                                      }
                                     }
                                   }}
                                 >
-                                  <div className="flex flex-col items-center justify-center p-6">
-                                    <Text variant="bodyMd" as="p">
-                                      Drop files to upload or
-                                    </Text>
-                                    <Button>Browse</Button>
-                                    <Text
-                                      variant="bodySm"
-                                      as="p"
-                                      tone="subdued"
-                                    >
-                                      Accept JPG, PNG
-                                    </Text>
-                                  </div>
+                                  <DropZone.FileUpload />
                                 </DropZone>
                               </div>
                             </div>
                           ))}
                         </div>
-                      </Card>
-                    </div>
-                  );
-                }
-              )}
+                      );
+                    }
+                  )}
+                </div>
+              </Card>
 
-              {/* Inventory Card */}
-              <div className="mt-2">
+              {/* Pricing Card */}
+              <PricingCard
+                pricingData={pricingData}
+                onPriceChange={(field, value) => {
+                  console.log('Price change:', field, value);
+                  setPricingData((prev) => ({
+                    ...prev,
+                    [field]: value,
+                  }));
+                }}
+              />
+
+              {/* Inventory and Shipping */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <div className="p-6">
-                    <div className="mb-6">
-                      <Text variant="headingLg" as="h2">
-                        Inventory
-                      </Text>
+                    <Text variant="headingMd" as="h3" className="mb-4">
+                      Inventory
+                    </Text>
+                    <div className="space-y-4">
+                      <TextField
+                        label="SKU"
+                        value={inventoryData.sku}
+                        onChange={(value) =>
+                          setInventoryData((prev) => ({
+                            ...prev,
+                            sku: value,
+                          }))
+                        }
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label="Zoho Item ID"
+                        value={inventoryData.zohoItemId}
+                        onChange={(value) =>
+                          setInventoryData((prev) => ({
+                            ...prev,
+                            zohoItemId: value,
+                          }))
+                        }
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label="Location Name"
+                        value={inventoryData.location.name}
+                        onChange={(value) =>
+                          setInventoryData((prev) => ({
+                            ...prev,
+                            location: {
+                              ...prev.location,
+                              name: value,
+                            },
+                          }))
+                        }
+                        autoComplete="off"
+                      />
                     </div>
+                  </div>
+                </Card>
 
-                    <div className="space-y-6">
-                      {/* SKU and Zoho ID */}
-                      <div className="flex gap-4">
-                        <div className="w-1/2">
-                          <TextField
-                            label="Product SKU"
-                            value={inventoryData.sku}
-                            onChange={(value) =>
-                              setInventoryData((prev) => ({
-                                ...prev,
-                                sku: value,
-                              }))
-                            }
-                            autoComplete="off"
-                            readOnly
-                            disabled
-                          />
-                        </div>
-                        <div className="w-1/2">
-                          <TextField
-                            label="Zoho Item ID"
-                            value={inventoryData.zohoItemId}
-                            readOnly
-                            onChange={(value) =>
-                              setInventoryData((prev) => ({
-                                ...prev,
-                                zohoItemId: value,
-                              }))
-                            }
-                            autoComplete="off"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Location Details */}
-                      <div className="flex gap-4">
-                        <div className="w-1/2">
-                          <TextField
-                            label="Location"
-                            value={inventoryData.location.name}
-                            readOnly
-                            onChange={(value) =>
-                              setInventoryData((prev) => ({
-                                ...prev,
-                                location: {
-                                  ...prev.location,
-                                  name: value,
-                                },
-                              }))
-                            }
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div className="w-[10%]">
-                          <TextField
-                            label="Unavailable"
-                            type="number"
-                            value={inventoryData.location.unavailable.toString()}
-                            readOnly
-                            onChange={(value) =>
-                              setInventoryData((prev) => ({
-                                ...prev,
-                                location: {
-                                  ...prev.location,
-                                  unavailable: parseInt(value) || 0,
-                                },
-                              }))
-                            }
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div className="w-[10%]">
-                          <TextField
-                            label="Committed"
-                            type="number"
-                            value={inventoryData.location.committed.toString()}
-                            readOnly
-                            onChange={(value) =>
-                              setInventoryData((prev) => ({
-                                ...prev,
-                                location: {
-                                  ...prev.location,
-                                  committed: parseInt(value) || 0,
-                                },
-                              }))
-                            }
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div className="w-[10%]">
-                          <TextField
-                            label="Available"
-                            type="number"
-                            value={inventoryData.location.available.toString()}
-                            readOnly
-                            onChange={(value) =>
-                              setInventoryData((prev) => ({
-                                ...prev,
-                                location: {
-                                  ...prev.location,
-                                  available: parseInt(value) || 0,
-                                },
-                              }))
-                            }
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div className="w-[10%]">
-                          <TextField
-                            label="On Hand"
-                            type="number"
-                            value={inventoryData.location.onHand.toString()}
-                            readOnly
-                            onChange={(value) =>
-                              setInventoryData((prev) => ({
-                                ...prev,
-                                location: {
-                                  ...prev.location,
-                                  onHand: parseInt(value) || 0,
-                                },
-                              }))
-                            }
-                            autoComplete="off"
-                          />
-                        </div>
-                      </div>
+                <Card>
+                  <div className="p-6">
+                    <Text variant="headingMd" as="h3" className="mb-4">
+                      Shipping
+                    </Text>
+                    <div className="space-y-4">
+                      <TextField
+                        label="Product Weight"
+                        type="number"
+                        suffix="lbs"
+                        value={shippingData.productWeight}
+                        onChange={(value) =>
+                          setShippingData((prev) => ({
+                            ...prev,
+                            productWeight: value,
+                          }))
+                        }
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label="Shipping Weight"
+                        type="number"
+                        suffix="lbs"
+                        value={shippingData.shippingWeight}
+                        onChange={(value) =>
+                          setShippingData((prev) => ({
+                            ...prev,
+                            shippingWeight: value,
+                          }))
+                        }
+                        autoComplete="off"
+                      />
                     </div>
                   </div>
                 </Card>
               </div>
-
-              {/* Shipping Card */}
-              <div className="mt-2">
-                <Card>
-                  <div className="p-6">
-                    <div className="mb-6">
-                      <Text variant="headingLg" as="h2">
-                        Shipping
-                      </Text>
-                    </div>
-
-                    <div className="flex gap-4">
-                      <div className="w-1/2">
-                        <TextField
-                          label="Product Weight *"
-                          type="number"
-                          suffix=""
-                          value={shippingData.productWeight}
-                          onChange={(value) =>
-                            setShippingData((prev) => ({
-                              ...prev,
-                              productWeight: value,
-                            }))
-                          }
-                          autoComplete="off"
-                          requiredIndicator
-                        />
-                      </div>
-                      <div className="w-1/2">
-                        <TextField
-                          label="Shipping Weight *"
-                          type="number"
-                          suffix=""
-                          value={shippingData.shippingWeight}
-                          onChange={(value) =>
-                            setShippingData((prev) => ({
-                              ...prev,
-                              shippingWeight: value,
-                            }))
-                          }
-                          autoComplete="off"
-                          requiredIndicator
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-            </>
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Footer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg">
-        <div className="w-[85%] ml-auto p-4 flex justify-between items-center">
-          <div>
-            <Button onClick={onBackAction}>Back to Product Details</Button>
-          </div>
-          <div className="flex gap-4">
-            <Button onClick={onBackAction}>Cancel</Button>
-            <Button onClick={handleSave} variant="primary">
-              Save Product
+          {/* Action Buttons */}
+          <div className="mt-8 flex justify-between">
+            <Button onClick={onBackAction}>Back</Button>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={!selectedCombination}
+            >
+              Save Variants
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Add margin bottom to main content to prevent overlap with fixed footer */}
-      <div className="mb-24"></div>
+      {/* Sidebar */}
+      <VariantSidebar
+        productData={productData}
+        selectedCombination={selectedCombination}
+        variantGroups={variantGroups}
+        mockupFiles={mockupFiles}
+        onCombinationSelect={setSelectedCombination}
+      />
     </div>
   );
 }

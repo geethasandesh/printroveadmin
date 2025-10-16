@@ -19,6 +19,7 @@ export default function CreateBinModal({
   const [formData, setFormData] = useState({
     name: "",
     category: "Blanks", // Default value
+    capacity: 1000, // Default capacity (same size for all bins)
   });
 
   const { createBin, updateBin, isLoading } = useBinStore();
@@ -29,12 +30,14 @@ export default function CreateBinModal({
       setFormData({
         name: editData.name,
         category: editData.category,
+        capacity: (editData as any).capacity || 1000,
       });
     } else {
       // Reset form when creating a new bin
       setFormData({
         name: "",
         category: "Blanks",
+        capacity: 1000,
       });
     }
   }, [editData]);
@@ -44,7 +47,7 @@ export default function CreateBinModal({
       const { name, value } = e.target;
       setFormData((prev) => ({
         ...prev,
-        [name]: value,
+        [name]: name === 'capacity' ? Number(value) : value,
       }));
     },
     []
@@ -54,6 +57,9 @@ export default function CreateBinModal({
     if (!formData.name.trim() || !formData.category) return;
 
     try {
+      // Log what we're sending
+      console.log("Submitting bin data:", formData);
+      
       if (editData) {
         // Update existing bin
         await updateBin(editData._id, formData);
@@ -63,10 +69,13 @@ export default function CreateBinModal({
       }
 
       // Reset form and close modal
-      setFormData({ name: "", category: "Blanks" });
+      setFormData({ name: "", category: "Blanks", capacity: 1000 });
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Failed to ${editData ? "update" : "create"} bin:`, error);
+      // Show error to user
+      const errorMessage = error.response?.data?.message || error.message || "Failed to create bin";
+      alert(`Error: ${errorMessage}`);
     }
   };
 
@@ -146,6 +155,25 @@ export default function CreateBinModal({
                         <option value="Blanks">Blanks</option>
                         <option value="Printed">Printed</option>
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-base font-medium text-gray-700 mb-2">
+                        Capacity (Max Items)
+                      </label>
+                      <input
+                        type="number"
+                        name="capacity"
+                        value={formData.capacity}
+                        onChange={handleInputChange}
+                        min="1"
+                        className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 text-base"
+                        placeholder="Enter bin capacity"
+                        autoComplete="off"
+                      />
+                      <p className="mt-1 text-sm text-gray-500">
+                        Maximum number of items this bin can hold (default: 1000)
+                      </p>
                     </div>
                   </div>
                 </div>

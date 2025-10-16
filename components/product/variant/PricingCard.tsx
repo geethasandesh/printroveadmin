@@ -10,17 +10,7 @@ interface PricingCardProps {
 }
 
 export function PricingCard({ pricingData, onPriceChange }: PricingCardProps) {
-  const calculateProfit = (price: string, cost: string) => {
-    const p = parseFloat(price || "0");
-    const c = parseFloat(cost || "0");
-    return p && c ? (p - c).toFixed(2) : "";
-  };
-
-  const calculateMargin = (price: string, cost: string) => {
-    const p = parseFloat(price || "0");
-    const c = parseFloat(cost || "0");
-    return p && c ? (((p - c) / p) * 100).toFixed(2) : "";
-  };
+  // Profit and margin fields removed from UI
 
   const handlePriceChange = (field: string, value: string) => {
     onPriceChange(field, value);
@@ -55,46 +45,7 @@ export function PricingCard({ pricingData, onPriceChange }: PricingCardProps) {
               />
             </div>
           </div>
-          <div className="flex gap-4">
-            <div className="w-[30%]">
-              <TextField
-                label="Cost Per Item"
-                type="number"
-                prefix="₹"
-                value={pricingData?.costPerItem || ""}
-                onChange={(value) => handlePriceChange("costPerItem", value)}
-                autoComplete="off"
-              />
-            </div>
-            <div className="w-[30%]">
-              <TextField
-                label="Profit"
-                type="number"
-                prefix="₹"
-                value={calculateProfit(
-                  pricingData?.price,
-                  pricingData?.costPerItem
-                )}
-                disabled
-                readOnly
-                autoComplete="off"
-              />
-            </div>
-            <div className="w-[30%]">
-              <TextField
-                label="Margin"
-                type="number"
-                suffix="%"
-                value={calculateMargin(
-                  pricingData?.price,
-                  pricingData?.costPerItem
-                )}
-                disabled
-                readOnly
-                autoComplete="off"
-              />
-            </div>
-          </div>
+          {/* Cost Per Item, Profit, and Margin fields removed */}
         </div>
       </Card>
     </div>

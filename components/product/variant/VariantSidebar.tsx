@@ -121,7 +121,9 @@ export function VariantSidebar({
           </div>
 
           {/* Column 2 - Product Details */}
-          <div className="flex-1">
+         
+        </div>
+        <div className="flex-1">
             <Text variant="headingMd" as="h2">
               {productData.title}
             </Text>
@@ -136,41 +138,11 @@ export function VariantSidebar({
               {productData.variants.length} variants
             </div>
           </div>
-        </div>
-
         {/* 2nd Row - Search */}
-        <div className="mb-6">
-          <TextField
-            label=""
-            prefix={<Icon source={SearchIcon} />}
-            placeholder="Search variants"
-            value=""
-            onChange={() => {}}
-            autoComplete="off"
-          />
-        </div>
+    
 
         {/* 3rd Row - Variant Filters */}
-        <div className="flex flex-wrap gap-4 mb-6">
-          {productData.variants.map((variant) => (
-            <div key={variant.name} className="w-[30%]">
-              <Select
-                label=""
-                placeholder={variant.name}
-                options={[
-                  { label: `All ${variant.name}s`, value: `all-${variant.name}` },
-                  ...variant.values
-                    .filter((value) => value && value.trim() !== "")
-                    .map((value) => ({
-                      label: value,
-                      value: value,
-                    })),
-                ]}
-                onChange={() => {}}
-              />
-            </div>
-          ))}
-        </div>
+      
 
         {/* Variant List - with overflow scrolling */}
         <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">

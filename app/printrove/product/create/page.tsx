@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   TextField,
@@ -40,9 +40,12 @@ import { VariantConfig } from "../variants/page";
 import { usePrintConfig } from "@/store/usePrintConfigStore";
 import { useProductStore } from "@/store/useProductStore";
 import { useCollectionStore } from "@/store/useCollectionStore";
+// Product type constraints removed
 import { ProductImageUpload } from "@/components/ProductImageUpload";
 import { UploadedImage } from "@/utils/s3Upload";
 import { ICompleteProduct } from "@/types/product";
+
+// Model presets and related uploads removed
 
 interface Variant {
   _id: string; // Add this
@@ -219,6 +222,7 @@ export default function CreateProduct() {
     status?: string;
     collections?: string;
     printTypes?: string;
+    printOptions?: string;
     avgLeadTime?: string;
     maxLeadTime?: string;
     avgDailyUsage?: string;
@@ -226,13 +230,15 @@ export default function CreateProduct() {
     requiredFields?: string;
   }>({});
 
+  // Position constraints removed
+
   // MOVE THESE TO HERE - with other state declarations
   const [variantConfigurations, setVariantConfigurations] = useState({});
 
-  // Move this function here too
-  const handleVariantDataChange = (data: any) => {
-    setVariantConfigurations(data);
-  };
+  // Move this function here too - memoized to avoid re-renders in children
+  const handleVariantDataChange = useCallback((data: any) => {
+    setVariantConfigurations((prev) => (prev === data ? prev : data));
+  }, []);
 
   const { configs, fetchConfigs, isLoading } = usePrintConfig();
   const {
@@ -253,6 +259,15 @@ export default function CreateProduct() {
     fetchConfigs(1, 100); // Fetch 100 configs
   }, []);
 
+  // Debug: Log configs when they change
+  useEffect(() => {
+    console.log('=== Print Configs Loaded ===');
+    console.log('Total configs:', configs.length);
+    configs.forEach(config => {
+      console.log(`- ${config.name}:`, config.options || [], '(', config.options?.length || 0, 'positions)');
+    });
+  }, [configs]);
+
   useEffect(() => {
     fetchCollections(1, 100); // Fetch 100 collections
   }, []);
@@ -265,6 +280,8 @@ export default function CreateProduct() {
     }
   }, [productId, getProduct]);
 
+  // Prevent re-applying the same product data on every render
+  const lastLoadedSnapshotRef = useRef<string | null>(null);
   useEffect(() => {
     if (isEditMode && currentProduct) {
       // Extract existing print options from variant configurations
@@ -294,7 +311,7 @@ export default function CreateProduct() {
         }
       }
 
-      setFormData({
+      const nextFormData = {
         title: currentProduct.title,
         description: currentProduct.description,
         status: currentProduct.status,
@@ -311,27 +328,34 @@ export default function CreateProduct() {
                 pt.options.flatMap((o: any) => o.values || [])
             : [],
           locations: [],
-          status: pt.status === "active" ? "active" : "inactive",
+          status: (pt.status === "active" ? "active" : "inactive") as "active" | "inactive",
         })),
         printOptions: existingPrintOptions,
         variants: currentProduct.variants,
         avgLeadTime: currentProduct.avgLeadTime,
-        maxLeadTime: currentProduct.maxLeadTime,
-        avgDailyUsage: currentProduct.avgDailyUsage,
+        maxLeadTime: (currentProduct as any).maxLeadTime || "",
+        avgDailyUsage: (currentProduct as any).avgDailyUsage || "",
         additionalInfo: currentProduct.additionalInfo,
         printConfig: {
           name: "",
           options: [],
           locations: [],
-          status: "active",
+          status: "active" as "active" | "inactive",
         },
         thumbnails: currentProduct.thumbnails || [],
         mockImages: currentProduct.mockImages || [],
         productionType: currentProduct.productionType || "outsourced", // Load productionType from existing product
-      });
+      };
+
+      const snapshot = JSON.stringify(nextFormData);
+      if (lastLoadedSnapshotRef.current !== snapshot) {
+        setFormData(nextFormData);
+        lastLoadedSnapshotRef.current = snapshot;
+      }
 
       setThumbnails(currentProduct.thumbnails || []);
       setMockImages(currentProduct.mockImages || []);
+      // model files removed
 
       // Set existing variant configurations for edit mode
       if (currentProduct.variantConfigurations) {
@@ -469,13 +493,14 @@ export default function CreateProduct() {
       errors.title = "Title is required";
     }
 
-    if (thumbnails.length === 0) {
-      errors.thumbnails = "At least one thumbnail image is required";
-    }
+    // TEMPORARILY DISABLED FOR TESTING - Uncomment when S3 is configured
+    // if (thumbnails.length === 0) {
+    //   errors.thumbnails = "At least one thumbnail image is required";
+    // }
 
-    if (mockImages.length === 0) {
-      errors.mockImages = "At least one mockup image is required";
-    }
+    // if (mockImages.length === 0) {
+    //   errors.mockImages = "At least one mockup image is required";
+    // }
 
     if (!formData.status) {
       errors.status = "Status is required";
@@ -487,6 +512,17 @@ export default function CreateProduct() {
 
     if (formData.printTypes.length === 0) {
       errors.printTypes = "At least one print type must be selected";
+    }
+
+    // Basic Print options validation: require at least one selection overall
+    if (formData.printTypes.length > 0) {
+      const allSelectedPositions: string[] = [];
+      Object.values(formData.printOptions).forEach((positions) => {
+        allSelectedPositions.push(...positions);
+      });
+      if (allSelectedPositions.length === 0) {
+        errors.printOptions = "At least one printing position must be selected";
+      }
     }
 
     if (!formData.avgLeadTime || formData.avgLeadTime.trim() === "") {
@@ -520,12 +556,26 @@ export default function CreateProduct() {
     setShowVariants(true);
   };
 
+  // Model preset logic removed
+
   // Function to handle saving product - no VariantConfig calls here since it's a child component
-  const handleSave = async (
-    productData: FormDataType,
-    variantConfigurations: any
-  ) => {
+  const handleSave = async (data: any) => {
+    console.log('🔍 handleSave received data:', data);
+    
+    // Extract productData and variantConfigurations from the data object
+    const productData = data.productData;
+    const variantConfigurations = data.variantConfigurations;
+    
+    console.log('📦 Extracted productData:', productData);
+    console.log('📦 Extracted variantConfigurations:', variantConfigurations);
     try {
+      // Only send images that actually have an S3 key. This avoids backend/S3
+      // errors like "The specified key does not exist" when nothing was uploaded
+      // or when a temp preview without key slips through.
+      // Re-enable images: send only files that have a valid S3 key
+      const safeThumbnails = (thumbnails || []).filter((img) => !!img?.key);
+      const safeMockImages = (mockImages || []).filter((img) => !!img?.key);
+      
       // Build payload matching backend schema (cast to any to satisfy signature)
       const payload: any = {
         product: {
@@ -540,8 +590,8 @@ export default function CreateProduct() {
           maxLeadTime: productData.maxLeadTime,
           avgDailyUsage: productData.avgDailyUsage,
           additionalInfo: productData.additionalInfo,
-          thumbnails: thumbnails,
-          mockImages: mockImages,
+          thumbnails: safeThumbnails,
+          mockImages: safeMockImages,
           // Pass variantConfigurations object directly
           variantConfigurations: variantConfigurations,
         },
@@ -576,8 +626,8 @@ export default function CreateProduct() {
   return (
     <>
       {!showVariants ? (
-        <div className="p-8 bg-[#F5F5F5] ml-10 mt-3">
-          <div className="w-[70%]">
+        <div className="p-8 bg-[#F5F5F5] mt-0">
+          <div className="w-full">
             <Card>
               <div className="p-6">
                 <Text variant="headingLg" as="h2">
@@ -586,6 +636,7 @@ export default function CreateProduct() {
 
                 <div className="mt-6">
                   <FormLayout>
+                    {/* Model preset and model file preview removed */}
                     {/* Show global validation error if any */}
                     {Object.values(validationErrors).some(
                       (error) => !!error
@@ -604,14 +655,46 @@ export default function CreateProduct() {
                       </div>
                     )}
 
-                    <TextField
-                      label="Title"
-                      value={formData.title}
-                      onChange={(value) => handleChange(value, "title")}
-                      autoComplete="off"
-                      error={validationErrors.title}
-                      requiredIndicator
-                    />
+                    <div className="grid grid-cols-3 gap-4">
+                      <TextField
+                        label="Title"
+                        value={formData.title}
+                        onChange={(value) => handleChange(value, "title")}
+                        autoComplete="off"
+                        error={validationErrors.title}
+                        requiredIndicator
+                      />
+                      <Select
+                        label="Status"
+                        options={[
+                          { label: "Active", value: "active" },
+                          { label: "Inactive", value: "inactive" },
+                        ]}
+                        value={formData.status}
+                        onChange={(value) => handleChange(value, "status")}
+                        error={validationErrors.status}
+                        requiredIndicator
+                      />
+                      <Select
+                        label="Production Type"
+                        options={[
+                          {label: "In-house (t-shirt)", value: "In-house-tshirt"},
+                          {
+                            label: "In-house (non-tshirt)",
+                            value: "In-house-non-tshirt",
+                          },
+                          { label: "Outsourced", value: "outsourced" }
+                        ]}
+                        value={formData.productionType}
+                        onChange={(value) =>
+                          handleChange(
+                            value as "In-house-non-tshirt" | "outsourced" | "In-house-tshirt",
+                            "productionType"
+                          )
+                        }
+                        helpText="Select whether this product is produced in-house or outsourced"
+                      />
+                    </div>
 
                     <TextField
                       label="Description"
@@ -653,57 +736,32 @@ export default function CreateProduct() {
                         )}
                       </div>
                     </div>
+                    {/* Product model files uploads removed */}
 
-                    <Select
-                      label="Status"
-                      options={[
-                        { label: "Active", value: "active" },
-                        { label: "Inactive", value: "inactive" },
-                      ]}
-                      value={formData.status}
-                      onChange={(value) => handleChange(value, "status")}
-                      error={validationErrors.status}
-                      requiredIndicator
-                    />
-
-                    <Select
-                      label="Production Type"
-                      options={[
-                        {label: "In-house (t-shirt)", value: "In-house-tshirt"},
-                        {
-                          label: "In-house (non-tshirt)",
-                          value: "In-house-non-tshirt",
-                        },
-                        { label: "Outsourced", value: "outsourced" }
-                      ]}
-                      value={formData.productionType}
-                      onChange={(value) =>
-                        handleChange(
-                          value as "In-house-non-tshirt" | "outsourced" | "In-house-tshirt",
-                          "productionType"
-                        )
-                      }
-                      helpText="Select whether this product is produced in-house or outsourced"
-                    />
-
-                    <MultiSelect
-                      label="Collections *"
-                      options={collectionOptions}
-                      selected={formData.collections}
-                      onChange={(values) => {
-                        setFormData((prev) => ({
-                          ...prev,
-                          collections: values,
-                        }));
-                        if (validationErrors.collections && values.length > 0) {
-                          setValidationErrors((prev) => ({
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-3">
+                        <MultiSelect
+                        label="Collections *"
+                        options={collectionOptions}
+                        selected={formData.collections}
+                        onChange={(values) => {
+                          setFormData((prev) => ({
                             ...prev,
-                            collections: undefined,
+                            collections: values,
                           }));
-                        }
-                      }}
-                      error={validationErrors.collections}
-                    />
+                          if (validationErrors.collections && values.length > 0) {
+                            setValidationErrors((prev) => ({
+                              ...prev,
+                              collections: undefined,
+                            }));
+                          }
+                        }}
+                        error={validationErrors.collections}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Product Type field removed */}
 
                     <MultiSelect
                       label="Print Types *"
@@ -757,43 +815,57 @@ export default function CreateProduct() {
                     />
 
                     {/* Render per-selected-print-config options multi-selects */}
-                    {formData.printConfigs.map((pc) => (
-                      <div key={pc._id || pc.name}>
-                        <MultiSelect
-                          label={`${pc.name} Options`}
-                          options={(pc.options || []).map((opt) => ({
-                            label:
-                              typeof opt === "string"
-                                ? opt
-                                : (opt as any).name || String(opt),
-                            value:
-                              typeof opt === "string"
-                                ? opt
-                                : JSON.stringify(opt),
-                          }))}
-                          selected={
-                            formData.printOptions[pc._id || pc.name] || []
-                          }
-                          onChange={(values) => {
-                            const key = pc._id || pc.name;
-                            setFormData((prev) => ({
-                              ...prev,
-                              printOptions: {
-                                ...prev.printOptions,
-                                [key]: values,
-                              },
-                            }));
-                          }}
-                        />
-                      </div>
-                    ))}
+                    {formData.printConfigs.map((pc) => {
+                      const allPositions = (pc.options || []).map((opt) => 
+                        typeof opt === "string" ? opt : (opt as any).name || String(opt)
+                      );
+                      const positionOptions = allPositions.map((opt) => ({
+                        label: opt,
+                        value: opt,
+                      }));
+
+                      return (
+                        <div key={pc._id || pc.name}>
+                          {/* Show warning if no positions available */}
+                          {allPositions.length === 0 && (
+                            <div className="mb-4 p-4 bg-yellow-50 border border-yellow-300 rounded-md">
+                              <p className="text-sm text-yellow-800">
+                                ⚠️ <strong>{pc.name}</strong> has no positions configured yet.
+                                <br />
+                                Please go to <a href="/printrove/printconfig" className="underline font-medium">Print Config Management</a> and add positions for this print type.
+                              </p>
+                            </div>
+                          )}
+                          
+                          <MultiSelect
+                            label={`${pc.name} Positions`}
+                            options={positionOptions}
+                            selected={
+                              formData.printOptions[pc._id || pc.name] || []
+                            }
+                            onChange={(values) => {
+                              const key = pc._id || pc.name;
+
+                              setFormData((prev) => ({
+                                ...prev,
+                                printOptions: {
+                                  ...prev.printOptions,
+                                  [key]: values,
+                                },
+                              }));
+                            }}
+                            error={validationErrors.printOptions}
+                          />
+                        </div>
+                      );
+                    })}
                   </FormLayout>
                 </div>
               </div>
             </Card>
           </div>
 
-          <div className="w-[70%] mt-6">
+          <div className="w-full mt-6">
             <Card>
               <div className="p-6">
                 <Text variant="headingLg" as="h2">
@@ -879,7 +951,6 @@ export default function CreateProduct() {
                   <Button
                     onClick={() => setShowVariantForm(true)}
                     icon={CircleUpIcon}
-                    fullWidth
                   >
                     Add variant like color or size
                   </Button>
@@ -888,7 +959,7 @@ export default function CreateProduct() {
             </Card>
           </div>
 
-          <div className="w-[70%] mt-6">
+          <div className="w-full mt-6">
             <Card>
               <div className="p-6">
                 <Text variant="headingLg" as="h2">
@@ -913,7 +984,7 @@ export default function CreateProduct() {
                       </div>
                       <div className="flex-1">
                         <TextField
-                          label="Maximum Lead Time"
+                          label="Maximum Lead Time in Days"
                           type="number"
                           value={formData.maxLeadTime || ""}
                           onChange={(value) =>
@@ -924,6 +995,20 @@ export default function CreateProduct() {
                           requiredIndicator
                         />
                       </div>
+                    </div>
+
+                    {/* Average Daily Usage */}
+                    <div className="mt-4">
+                      <TextField
+                        label="Average Daily Usage (units/day)"
+                        type="number"
+                        value={formData.avgDailyUsage || ""}
+                        onChange={(value) => handleChange(value, "avgDailyUsage")}
+                        autoComplete="off"
+                        error={validationErrors.avgDailyUsage}
+                        requiredIndicator
+                        helpText="Estimated average quantity consumed per day"
+                      />
                     </div>
                   </FormLayout>
                 </div>
@@ -951,9 +1036,9 @@ export default function CreateProduct() {
             </Card>
           </div>
 
-          <div className="w-[70%] mt-6 flex justify-end">
+          <div className="w-full mt-6 flex justify-end">
             <Button variant="primary" onClick={handleNext}>
-              Next: Configure Variants
+              Next
             </Button>
           </div>
         </div>

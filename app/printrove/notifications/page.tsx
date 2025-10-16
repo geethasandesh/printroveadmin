@@ -1,175 +1,279 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import {
-  Card,
-  Text,
-  Badge,
-  Button,
-  DataTable,
-  ButtonGroup,
-} from "@shopify/polaris";
-import { useNotificationStore } from "@/store/useNotificationStore";
+import { useState, useEffect } from 'react';
+import { Card, Text, Button, Badge } from '@shopify/polaris';
+import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
+
+interface Notification {
+  _id: string;
+  type: 'info' | 'warning' | 'error' | 'success';
+  category: string;
+  title: string;
+  message: string;
+  recipients: string[];
+  relatedEntity?: {
+    type: string;
+    id: string;
+    name: string;
+  };
+  actionUrl?: string;
+  actionLabel?: string;
+  isRead: boolean;
+  readBy: string[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export default function NotificationsPage() {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filter, setFilter] = useState<"all" | "unread">("all");
-  const itemsPerPage = 20;
-
-  const {
-    notifications,
-    total,
-    unreadCount,
-    isLoading,
-    fetchNotifications,
-    markAsRead,
-    markAllAsRead,
-    deleteNotification,
-  } = useNotificationStore();
+  const router = useRouter();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [total, setTotal] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   useEffect(() => {
-    fetchNotifications(currentPage, itemsPerPage);
-  }, [currentPage]);
+    fetchNotifications();
+  }, [filter]);
 
-  const getSeverityBadge = (severity: string) => {
-    switch (severity) {
-      case "critical":
-        return <Badge tone="critical">{severity}</Badge>;
-      case "high":
-        return <Badge tone="warning">{severity}</Badge>;
-      case "medium":
-        return <Badge tone="info">{severity}</Badge>;
-      default:
-        return <Badge>{severity}</Badge>;
+  const fetchNotifications = async () => {
+    setIsLoading(true);
+    try {
+      const url = filter === 'unread'
+        ? 'http://localhost:5001/api/notifications?recipient=admin&unreadOnly=true'
+        : 'http://localhost:5001/api/notifications?recipient=admin';
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setNotifications(data.notifications || []);
+        setTotal(data.total || 0);
+        setUnreadCount(data.unreadCount || 0);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/notifications/${notificationId}/read`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: 'admin' })
+        }
+      );
+
+      if (response.ok) {
+        fetchNotifications();
+      }
+    } catch (error) {
+      console.error('Failed to mark as read:', error);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      const response = await fetch(
+        'http://localhost:5001/api/notifications/mark-all-read',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: 'admin' })
+        }
+      );
+
+      if (response.ok) {
+        fetchNotifications();
+      }
+    } catch (error) {
+      console.error('Failed to mark all as read:', error);
+    }
+  };
+
+  const deleteNotification = async (notificationId: string) => {
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/notifications/${notificationId}`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+
+      if (response.ok) {
+        fetchNotifications();
+      }
+    } catch (error) {
+      console.error('Failed to delete notification:', error);
     }
   };
 
   const getTypeBadge = (type: string) => {
-    if (type.includes("failure")) {
-      return <Badge tone="warning">Sync Failure</Badge>;
-    } else if (type.includes("exhausted")) {
-      return <Badge tone="critical">Retry Exhausted</Badge>;
-    } else if (type === "system_error") {
-      return <Badge tone="critical">System Error</Badge>;
-    }
-    return <Badge>{type}</Badge>;
+    const tones: Record<string, any> = {
+      error: 'critical',
+      warning: 'warning',
+      success: 'success',
+      info: 'info'
+    };
+
+    return <Badge tone={tones[type] || 'info'}>{type.toUpperCase()}</Badge>;
   };
 
-  const filteredNotifications =
-    filter === "unread"
-      ? notifications.filter((n) => !n.isRead)
-      : notifications;
-
-  const rows = filteredNotifications.map((notification, index) => [
-    <div className="flex items-center gap-2">
-      {!notification.isRead && (
-        <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-      )}
-      <Text variant="bodyMd" as="span" fontWeight={notification.isRead ? "regular" : "bold"}>
-        {notification.title}
-      </Text>
-    </div>,
-    getTypeBadge(notification.type),
-    getSeverityBadge(notification.severity),
-    <Text variant="bodySm" as="span">
-      {notification.message.length > 80
-        ? `${notification.message.substring(0, 80)}...`
-        : notification.message}
-    </Text>,
-    new Date(notification.createdAt).toLocaleString(),
-    <ButtonGroup>
-      {!notification.isRead && (
-        <Button size="slim" onClick={() => markAsRead(notification._id)}>
-          Mark Read
-        </Button>
-      )}
-      <Button
-        size="slim"
-        tone="critical"
-        onClick={() => deleteNotification(notification._id)}
-      >
-        Delete
-      </Button>
-    </ButtonGroup>,
-  ]);
+  const getCategoryLabel = (category: string) => {
+    switch (category) {
+      case 'config_change':
+        return 'Config Change';
+      case 'config_deactivation':
+        return 'Config Deactivation';
+      case 'product_update':
+        return 'Product Update';
+      default:
+        return 'System';
+    }
+  };
 
   return (
     <div className="h-full p-8 bg-[#F5F5F5]">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <Text variant="headingLg" as="h3" fontWeight="bold">
-            Notifications
-          </Text>
-          <Text variant="bodyMd" as="p" tone="subdued">
-            {unreadCount} unread notification{unreadCount !== 1 ? "s" : ""}
-          </Text>
+          <h1 className="text-4xl font-extrabold">Notifications</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            {total} total notifications • {unreadCount} unread
+          </p>
         </div>
-        <div className="flex gap-2">
-          <ButtonGroup>
-            <Button
-              pressed={filter === "all"}
-              onClick={() => setFilter("all")}
-            >
-              All
-            </Button>
-            <Button
-              pressed={filter === "unread"}
-              onClick={() => setFilter("unread")}
-            >
-              Unread ({unreadCount})
-            </Button>
-          </ButtonGroup>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${
+              filter === 'all'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            All ({total})
+          </button>
+          <button
+            onClick={() => setFilter('unread')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${
+              filter === 'unread'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Unread ({unreadCount})
+          </button>
           {unreadCount > 0 && (
-            <Button onClick={markAllAsRead}>Mark All as Read</Button>
+            <button
+              onClick={markAllAsRead}
+              className="px-4 py-2 rounded-md text-sm font-medium bg-green-600 text-white hover:bg-green-700"
+            >
+              Mark All Read
+            </button>
           )}
         </div>
       </div>
 
-      <Card>
-        {filteredNotifications.length === 0 ? (
-          <div className="p-8 text-center">
-            <Text variant="headingMd" as="h4" tone="subdued">
-              No notifications
-            </Text>
-          </div>
+      <div className="space-y-3">
+        {isLoading ? (
+          <Card>
+            <div className="p-12 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+              <p className="text-sm text-gray-500 mt-3">Loading notifications...</p>
+            </div>
+          </Card>
+        ) : notifications.length === 0 ? (
+          <Card>
+            <div className="p-16 text-center">
+              <div className="text-gray-400 text-6xl mb-4">🔔</div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {filter === 'unread' 
+                  ? "You're all caught up! Check back later for updates."
+                  : 'Notifications will appear here when there are important updates.'}
+              </p>
+            </div>
+          </Card>
         ) : (
-          <DataTable
-            columnContentTypes={["text", "text", "text", "text", "text", "text"]}
-            headings={["Title", "Type", "Severity", "Message", "Date", "Actions"]}
-            rows={rows}
-          />
+          notifications.map((notification) => (
+            <Card key={notification._id}>
+              <div className={`p-5 ${!notification.isRead ? 'bg-blue-50' : ''}`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-2xl">{getTypeBadge(notification.type)}</span>
+                      <Text variant="headingMd" as="h3">
+                        {notification.title}
+                      </Text>
+                      {!notification.isRead && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          New
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">
+                      {notification.message}
+                    </p>
+
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <span>Category: {getCategoryLabel(notification.category)}</span>
+                      <span>•</span>
+                      <span>{format(new Date(notification.createdAt), 'MMM dd, yyyy HH:mm')}</span>
+                      {notification.relatedEntity && (
+                        <>
+                          <span>•</span>
+                          <span>Related: {notification.relatedEntity.name}</span>
+                        </>
+                      )}
+                    </div>
+
+                    {notification.actionUrl && notification.actionLabel && (
+                      <div className="mt-4">
+                        <button
+                          onClick={() => router.push(notification.actionUrl!)}
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200"
+                        >
+                          {notification.actionLabel} →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {!notification.isRead && (
+                      <button
+                        onClick={() => markAsRead(notification._id)}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                      >
+                        Mark as read
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteNotification(notification._id)}
+                      className="text-xs text-red-600 hover:text-red-800 font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ))
         )}
-      </Card>
-
-      {isLoading && (
-        <div className="mt-4 text-center">
-          <Text variant="bodyMd" as="p">
-            Loading...
-          </Text>
-        </div>
-      )}
-
-      {/* Pagination */}
-      {total > itemsPerPage && (
-        <div className="mt-4 flex justify-center gap-2">
-          <Button
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage(currentPage - 1)}
-          >
-            Previous
-          </Button>
-          <Text variant="bodyMd" as="span">
-            Page {currentPage} of {Math.ceil(total / itemsPerPage)}
-          </Text>
-          <Button
-            disabled={currentPage >= Math.ceil(total / itemsPerPage)}
-            onClick={() => setCurrentPage(currentPage + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
-

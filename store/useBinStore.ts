@@ -5,6 +5,7 @@ interface Bin {
   _id: string;
   name: string;
   category: string;
+  capacity: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,6 +17,7 @@ interface BinWithStock extends Bin {
 interface BinPayload {
   name: string;
   category: string;
+  capacity?: number;
 }
 
 interface BinStore {
@@ -50,7 +52,11 @@ export const useBinStore = create<BinStore>((set) => ({
     try {
       set({ isLoading: true, error: null });
 
-      await apiClient.post("/inventory/bins", payload);
+      // Temporary debug logging
+      console.log("Creating bin with payload:", payload);
+
+      const createResponse = await apiClient.post("/inventory/bins", payload);
+      console.log("Bin creation response:", createResponse.data);
 
       // Refresh the bins list after creation (assuming first page)
       const response = await apiClient.get<{ data: Bin[]; total: number }>(
@@ -71,10 +77,16 @@ export const useBinStore = create<BinStore>((set) => ({
       set({
         allBins: allBinsResponse.data.data,
       });
-    } catch (error) {
+    } catch (error: any) {
+      // Log detailed error for debugging
+      console.error("Bin creation error:", error);
+      console.error("Error response:", error.response?.data);
+      
+      const errorMessage = error.response?.data?.message || error.message || "Failed to create bin";
+      
       set({
         isLoading: false,
-        error: error instanceof Error ? error.message : "Failed to create bin",
+        error: errorMessage,
       });
       throw error; // Re-throw to handle in the UI
     }

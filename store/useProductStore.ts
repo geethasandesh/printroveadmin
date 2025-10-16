@@ -60,12 +60,24 @@ export const useProductStore = create<ProductStore>((set, get) => ({
 
       set({ isCreating: false });
       return response.data.success;
-    } catch (error) {
-      console.error("Failed to create product:", error);
+    } catch (error: any) {
+      // Surface server-side validation details to the console and store
+      const resp = error?.response;
+      try {
+        const parsedReq = (() => { try { return JSON.parse(resp?.config?.data || '{}'); } catch { return resp?.config?.data; } })();
+        console.group("Create Product – HTTP Error");
+        console.error("Status:", resp?.status);
+        console.error("URL:", resp?.config?.url);
+        console.error("Method:", resp?.config?.method);
+        console.error("Request Payload:", typeof parsedReq === 'string' ? parsedReq : JSON.stringify(parsedReq, null, 2));
+        console.error("Response Data:", typeof resp?.data === 'string' ? resp?.data : JSON.stringify(resp?.data, null, 2));
+        console.groupEnd();
+      } catch {}
+      const serverData = resp?.data;
       set({
         isCreating: false,
-        error:
-          error instanceof Error ? error.message : "Failed to create product",
+        // Prefer backend message when available
+        error: serverData?.message || (error instanceof Error ? error.message : "Failed to create product"),
       });
       return false;
     }

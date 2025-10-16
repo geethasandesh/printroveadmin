@@ -14,6 +14,8 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { usePrintConfig } from "@/store/usePrintConfigStore";
 import { Toaster, toast } from "react-hot-toast";
+import ImpactAnalysisModal from "../../ImpactAnalysisModal";
+import DeactivationModal from "../../DeactivationModal";
 
 // options are now plain string values (e.g. ["Left Sleeve","Right Sleeve"])
 
@@ -35,6 +37,14 @@ export default function PrintConfigUpdatePage() {
   const [savedOptions, setSavedOptions] = useState<string[]>([]);
   const [newValue, setNewValue] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+
+  // NEW: Impact analysis and deactivation state
+  const [showImpactModal, setShowImpactModal] = useState(false);
+  const [showDeactivationModal, setShowDeactivationModal] = useState(false);
+  const [impactData, setImpactData] = useState<any>(null);
+  const [deactivationImpact, setDeactivationImpact] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   useEffect(() => {
     if (currentConfig && currentConfig.options) {
@@ -88,31 +98,143 @@ export default function PrintConfigUpdatePage() {
     setSavedOptions((prev) => prev.filter((_, i) => i !== indexToRemove));
   };
 
-  const handleSave = async () => {
+  // NEW: Analyze impact before saving
+  const analyzeImpact = async () => {
+    if (!params.id) return;
+
+    setIsAnalyzing(true);
+    try {
+      // Always compute client-side removed positions first (case-insensitive)
+      const currentPositions: string[] = (currentConfig?.options || []).map((o: any) =>
+        typeof o === 'string' ? o : o?.name || String(o)
+      );
+      const removedLocal = currentPositions.filter(
+        (cp) => !savedOptions.some((np) => (np || '').toLowerCase() === (cp || '').toLowerCase())
+      );
+
+      if (removedLocal.length === 0) {
+        // Nothing removed → save directly
+        await performUpdate(false);
+        return;
+      }
+
+      const response = await fetch(
+        `http://localhost:5001/api/inventory/print-configs/${params.id}/analyze-position-change`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newPositions: savedOptions })
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+      console.log('[Impact] analyze-position-change response:', data);
+
+      if (data && data.success && data.impact) {
+        setImpactData(data.impact);
+
+        // Show the modal if any positions were removed OR if server marks issues
+        const removedFromServer = Array.isArray(data.impact.removedPositions)
+          ? data.impact.removedPositions.length > 0
+          : false;
+        if (
+          removedFromServer ||
+          data.impact.affectedProductsCount > 0 ||
+          !data.impact.canProceed
+        ) {
+          setShowImpactModal(true);
+        } else {
+          // No effect → save directly
+          await performUpdate(false);
+        }
+      } else {
+        // Fallback to client-side diff modal when server doesn't return impact
+        const fallbackImpact = {
+          canProceed: true,
+          severity: 'low',
+          affectedProductsCount: 0,
+          affectedOrdersCount: 0,
+          affectedProducts: [],
+          removedPositions: removedLocal,
+          warnings: [],
+          blockers: [],
+          recommendations: ['Server impact analysis unavailable; proceed with caution'],
+        } as any;
+        setImpactData(fallbackImpact);
+        setShowImpactModal(true);
+      }
+    } catch (error) {
+      console.error('Failed to analyze impact (fallback to client diff):', error);
+      // Fallback: we already computed removedLocal
+      if (removedLocal.length > 0) {
+        const fallbackImpact = {
+          canProceed: true,
+          severity: 'low',
+          affectedProductsCount: 0,
+          affectedOrdersCount: 0,
+          affectedProducts: [],
+          removedPositions: removedLocal,
+          warnings: [],
+          blockers: [],
+          recommendations: ['Server impact analysis unavailable; proceed with caution'],
+        } as any;
+        setImpactData(fallbackImpact);
+        setShowImpactModal(true);
+      } else {
+        // Nothing removed; proceed
+        await performUpdate(false);
+      }
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // NEW: Actually perform the update
+  const performUpdate = async (forceUpdate: boolean) => {
     if (!params.id || !savedOptions.length) return;
 
     try {
-      // New payload: send options as array of string values
-      const payload = {
-        options: savedOptions,
-      };
+      const response = await fetch(
+        `http://localhost:5001/api/inventory/print-configs/${params.id}/update-confirmed`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            options: savedOptions,
+            forceUpdate,
+            userId: 'admin' // TODO: Get from auth
+          })
+        }
+      );
 
-      await updateConfig(params.id as string, payload);
-      toast.success("Print configuration updated successfully!", {
-        duration: 3000,
-        position: "top-right",
-        style: {
-          background: "#DFF0D8",
-          color: "#108043",
-          padding: "16px",
-          borderRadius: "8px",
-        },
-      });
+      const data = await response.json();
 
-      // Wait for toast to be visible before navigation
-      setTimeout(() => {
-        router.push("/printrove/printconfig");
-      }, 500);
+      if (response.status === 409) {
+        // Requires confirmation
+        setImpactData(data.impact);
+        setShowImpactModal(true);
+        return;
+      }
+
+      if (data.success) {
+        toast.success("Print configuration updated successfully!", {
+          duration: 3000,
+          position: "top-right",
+          style: {
+            background: "#DFF0D8",
+            color: "#108043",
+            padding: "16px",
+            borderRadius: "8px",
+          },
+        });
+
+        setShowImpactModal(false);
+
+        // Wait for toast to be visible before navigation
+        setTimeout(() => {
+          router.push("/printrove/printconfig");
+        }, 500);
+      }
     } catch (error) {
       toast.error("Failed to update print configuration", {
         duration: 3000,
@@ -125,6 +247,90 @@ export default function PrintConfigUpdatePage() {
         },
       });
       console.error("Failed to update print config:", error);
+    }
+  };
+
+  const handleSave = () => {
+    analyzeImpact();
+  };
+
+  // NEW: Handle impact modal confirmation
+  const handleImpactConfirm = () => {
+    performUpdate(true);
+  };
+
+  // NEW: Analyze deactivation impact
+  const analyzeDeactivation = async () => {
+    if (!params.id) return;
+
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/inventory/print-configs/${params.id}/analyze-deactivation`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        setDeactivationImpact(data.impact);
+        setShowDeactivationModal(true);
+      }
+    } catch (error) {
+      console.error('Failed to analyze deactivation:', error);
+      toast.error('Failed to analyze deactivation impact.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // NEW: Handle deactivation
+  const handleDeactivation = async (mode: 'soft' | 'force') => {
+    if (!params.id) return;
+
+    setIsDeactivating(true);
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/inventory/print-configs/${params.id}/deactivate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode,
+            userId: 'admin' // TODO: Get from auth
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`Configuration ${mode} deactivated successfully!`, {
+          duration: 3000,
+          position: "top-right",
+          style: {
+            background: "#DFF0D8",
+            color: "#108043",
+            padding: "16px",
+            borderRadius: "8px",
+          },
+        });
+
+        setShowDeactivationModal(false);
+
+        // Wait for toast before navigation
+        setTimeout(() => {
+          router.push("/printrove/printconfig");
+        }, 500);
+      }
+    } catch (error) {
+      toast.error('Failed to deactivate configuration');
+      console.error('Deactivation error:', error);
+    } finally {
+      setIsDeactivating(false);
     }
   };
 
@@ -152,29 +358,54 @@ export default function PrintConfigUpdatePage() {
           marginBottom: "24px",
         }}
       >
-        <h1
-          style={{
-            fontSize: "24px",
-            fontWeight: "600",
-            color: "#202223",
-          }}
-        >
-          {currentConfig.name}
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1
+            style={{
+              fontSize: "24px",
+              fontWeight: "600",
+              color: "#202223",
+            }}
+          >
+            {currentConfig.name}
+          </h1>
+          <span
+            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+              currentConfig.status === 'active'
+                ? 'bg-green-100 text-green-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}
+          >
+            {currentConfig.status === 'active' ? '✓ Active' : '○ Inactive'}
+          </span>
+        </div>
         <div style={{ display: "flex", gap: "12px" }}>
           <Button
             onClick={() => router.push("/printrove/printconfig")}
             variant="tertiary"
+            disabled={isAnalyzing || isDeactivating}
           >
             Cancel
           </Button>
+          
+          {currentConfig.status === 'active' && (
+            <Button
+              onClick={analyzeDeactivation}
+              variant="primary"
+              tone="critical"
+              loading={isAnalyzing}
+              disabled={isDeactivating || savedOptions.length === 0}
+            >
+              {isAnalyzing ? "Analyzing..." : "Deactivate"}
+            </Button>
+          )}
+
           <Button
             onClick={handleSave}
             variant="primary"
-            loading={isLoading}
-            disabled={savedOptions.length === 0}
+            loading={isAnalyzing}
+            disabled={savedOptions.length === 0 || isDeactivating}
           >
-            {isLoading ? "Saving..." : "Save"}
+            {isAnalyzing ? "Analyzing..." : "Save"}
           </Button>
         </div>
       </div>
@@ -284,9 +515,9 @@ export default function PrintConfigUpdatePage() {
                             borderRadius: "4px",
                           }}
                           onError={(e) => {
-                            // Handle image loading error
+                            // Fallback to a remote placeholder to avoid 404s for local missing asset
                             (e.target as HTMLImageElement).src =
-                              "/placeholder-product.png";
+                              "https://placehold.co/48x48?text=No+img";
                           }}
                         />
                       ) : (
@@ -364,6 +595,24 @@ export default function PrintConfigUpdatePage() {
           </div>
         </Card>
       </div>
+
+      {/* Impact Analysis Modal */}
+      <ImpactAnalysisModal
+        open={showImpactModal}
+        onClose={() => setShowImpactModal(false)}
+        onConfirm={handleImpactConfirm}
+        impact={impactData}
+        configName={currentConfig.name}
+      />
+
+      {/* Deactivation Modal */}
+      <DeactivationModal
+        open={showDeactivationModal}
+        onClose={() => setShowDeactivationModal(false)}
+        onConfirm={handleDeactivation}
+        impact={deactivationImpact}
+        isLoading={isDeactivating}
+      />
     </Page>
   );
 }

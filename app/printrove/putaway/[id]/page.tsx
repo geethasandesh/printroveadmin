@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, use } from "react";
 import { Card, Text, Button, Spinner } from "@shopify/polaris";
 import { useRouter } from "next/navigation";
 import apiClient from "@/apiClient";
@@ -24,9 +24,9 @@ interface PutAwayDetails {
   }[];
 }
 
-export default function PutAwayDetails({ params }: { params: { id: string } }) {
+export default function PutAwayDetails({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const { id } = params;
+  const { id } = use(params);
   const [putAway, setPutAway] = useState<PutAwayDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

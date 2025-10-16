@@ -431,6 +431,7 @@ export default function ReplenishmentPlanningPage() {
         </div>
         <div style={{ flex: 1, maxWidth: 480 }}>
           <TextField
+          
             label=""
             placeholder="Search your order here"
             value={searchQuery}

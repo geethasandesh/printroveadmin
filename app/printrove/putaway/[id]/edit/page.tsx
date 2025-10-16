@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, use } from "react";
 import {
   Card,
   Text,
@@ -19,9 +19,9 @@ import usePutAwayStore from "@/store/usePutAwayStore";
 import { useProductStore } from "@/store/useProductStore";
 import { useBinStore } from "@/store/useBinStore"; // Import the useBinStore
 
-export default function PutAwayEdit({ params }: { params: { id: string } }) {
+export default function PutAwayEdit({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const { id } = params;
+  const { id } = use(params);
   const [showErrorBanner, setShowErrorBanner] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
@@ -128,9 +128,25 @@ export default function PutAwayEdit({ params }: { params: { id: string } }) {
 
       await savePutAwayWithLineItems();
       router.push("/printrove/putaway");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving put away:", error);
-      setShowErrorBanner(true);
+      
+      // Check if error is related to bin capacity
+      const errorMessage = error.response?.data?.message || error.message || '';
+      
+      if (errorMessage.includes('is full') || errorMessage.includes('capacity')) {
+        // Show specific popup for bin capacity errors
+        alert(`🚫 BIN CAPACITY FULL!\n\n${errorMessage}\n\nPlease choose a different bin or transfer items to free up space.`);
+      } else if (errorMessage.includes('Warning:') && errorMessage.includes('% full')) {
+        // Show warning popup for high capacity (80%+)
+        const proceed = confirm(`⚠️ BIN CAPACITY WARNING!\n\n${errorMessage}\n\nDo you want to proceed anyway?`);
+        if (!proceed) {
+          return;
+        }
+      } else {
+        // Show generic error banner for other errors
+        setShowErrorBanner(true);
+      }
     }
   };
 
