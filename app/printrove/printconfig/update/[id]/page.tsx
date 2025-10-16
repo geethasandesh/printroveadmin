@@ -16,7 +16,7 @@ import { usePrintConfig } from "@/store/usePrintConfigStore";
 import { Toaster, toast } from "react-hot-toast";
 import ImpactAnalysisModal from "../../ImpactAnalysisModal";
 import DeactivationModal from "../../DeactivationModal";
-import { getApiBaseUrl } from "../../../../lib/apiUrl";
+import { getApiBaseUrl } from "@/lib/apiUrl";
 
 // options are now plain string values (e.g. ["Left Sleeve","Right Sleeve"])
 
